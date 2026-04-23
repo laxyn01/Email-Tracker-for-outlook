@@ -10,7 +10,7 @@
   <DisplayName DefaultValue="Email Tracker"/>
   <Description DefaultValue="Track when your emails are opened"/>
 
-  <!-- ⚠️ APNA GITHUB USERNAME DAALO NEECHE -->
+  <!-- laxyn -->
   <SupportUrl DefaultValue="https://YOUR_GITHUB_USERNAME.github.io/email-tracker"/>
 
   <Hosts>
@@ -26,7 +26,7 @@
   <FormSettings>
     <Form xsi:type="ItemEdit">
       <DesktopSettings>
-        <!-- ⚠️ APNA GITHUB USERNAME DAALO NEECHE -->
+        <!-- laxyn -->
         <SourceLocation DefaultValue="https://YOUR_GITHUB_USERNAME.github.io/email-tracker/taskpane.html"/>
         <RequestedHeight>220</RequestedHeight>
       </DesktopSettings>
