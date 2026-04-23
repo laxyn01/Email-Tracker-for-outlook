@@ -3,7 +3,7 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:type="MailApp">
   <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
-  <Version>1.0.0</Version>
+  <Version>1.0.1</Version>
   <ProviderName>My Email Tracker</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Email Tracker"/>
@@ -11,6 +11,7 @@
   <SupportUrl DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook"/>
   <AppDomains>
     <AppDomain>https://laxyn01.github.io</AppDomain>
+    <AppDomain>https://email-tracker-outlook.onrender.com</AppDomain>
   </AppDomains>
   <Hosts>
     <Host Name="Mailbox"/>
