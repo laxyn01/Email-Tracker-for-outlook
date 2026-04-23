@@ -3,170 +3,114 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Email Tracker</title>
-  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js" type="text/javascript"></script>
+  <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #f8f9ff;
-      padding: 16px;
+    body { font-family: 'Segoe UI', sans-serif; padding: 14px; background: #f8f9ff; }
+    h2 { color: #667eea; font-size: 16px; margin-bottom: 12px; }
+    #status {
+      background: #fff; border: 1px solid #dde0ff;
+      border-radius: 8px; padding: 11px;
+      font-size: 13px; color: #444;
+      margin-bottom: 12px; min-height: 44px;
     }
-    .logo {
-      font-size: 17px;
-      font-weight: 700;
-      color: #667eea;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    .green { background: #f0fdf4 !important; border-color: #22c55e !important; color: #166534 !important; }
+    .red   { background: #fef2f2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+    button {
+      width: 100%; padding: 11px; border: none;
+      border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; margin-bottom: 8px;
     }
-    .status-box {
-      background: white;
-      border: 1px solid #dde0ff;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 12px;
-      font-size: 13px;
-      color: #555;
-      min-height: 44px;
-      line-height: 1.5;
-    }
-    .status-box.success { border-color: #22c55e; background: #f0fdf4; color: #166534; }
-    .status-box.error   { border-color: #ef4444; background: #fef2f2; color: #991b1b; }
-    .badge {
-      display: none;
-      align-items: center;
-      gap: 7px;
-      background: #f0fdf4;
-      border: 1px solid #22c55e;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      color: #166534;
-      font-weight: 600;
-      margin-bottom: 10px;
-    }
-    .badge.show { display: flex; }
-    .dot {
-      width: 8px; height: 8px;
-      background: #22c55e;
-      border-radius: 50%;
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-    .btn {
-      width: 100%;
-      padding: 11px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-bottom: 8px;
-      transition: opacity .2s;
-    }
-    .btn:hover { opacity: .85; }
-    .btn-track  { background: linear-gradient(135deg,#667eea,#764ba2); color: white; }
-    .btn-remove { background: #f0f0f0; color: #555; }
-    .footer { font-size: 11px; color: #aaa; text-align: center; margin-top: 12px; }
-    .footer a { color: #667eea; text-decoration: none; }
+    #btnTrack  { background: linear-gradient(135deg,#667eea,#764ba2); color: #fff; }
+    #btnRemove { background: #efefef; color: #555; }
+    #dash { text-align: center; margin-top: 10px; font-size: 12px; }
+    #dash a { color: #667eea; }
   </style>
 </head>
 <body>
-  <div class="logo">📧 Email Tracker</div>
-
-  <div class="badge" id="badge">
-    <div class="dot"></div> Tracking Active
-  </div>
-
-  <div class="status-box" id="status">Loading...</div>
-
-  <button class="btn btn-track"  onclick="addTracking()">🔍 Track This Email</button>
-  <button class="btn btn-remove" onclick="removeTracking()">✖ Remove Tracking</button>
-
-  <div class="footer">
-    <a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">
-      📊 Open Dashboard
-    </a>
-  </div>
+  <h2>📧 Email Tracker</h2>
+  <div id="status">Initializing...</div>
+  <button id="btnTrack"  onclick="addTracking()">🔍 Track This Email</button>
+  <button id="btnRemove" onclick="removeTracking()">✖ Remove Tracking</button>
+  <div id="dash"><a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">📊 Open Dashboard</a></div>
 
 <script>
-  var SERVER = 'https://email-tracker-outlook.onrender.com';
-  var trackId = null;
+var SERVER = 'https://email-tracker-outlook.onrender.com';
+var tId = null;
 
-  function setStatus(msg, type) {
-    var el = document.getElementById('status');
-    el.textContent = msg;
-    el.className = 'status-box' + (type ? ' ' + type : '');
-  }
+function setStatus(msg, cls) {
+  var el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = cls || '';
+}
 
+// Support both old and new Office.js initialization
+if (Office.onReady) {
+  Office.onReady(function(info) {
+    setStatus('Ready! Track dabao before sending.', '');
+  });
+} else {
   Office.initialize = function() {
-    setStatus('Ready! "Track This Email" dabao before sending.', '');
+    setStatus('Ready! Track dabao before sending.', '');
   };
+}
 
-  function genId() {
-    return 'trk_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
-  }
+function genId() {
+  return 'trk' + Date.now() + Math.random().toString(36).substr(2,5);
+}
 
-  function addTracking() {
-    try {
-      var item = Office.context.mailbox.item;
-      var subj = item.subject || 'No Subject';
-      trackId = genId();
+function addTracking() {
+  try {
+    var item = Office.context.mailbox.item;
+    tId = genId();
+    var subj = item.subject || 'No Subject';
 
-      item.to.getAsync(function(res) {
-        var toAddr = 'Unknown';
-        if (res.status === Office.AsyncResultStatus.Succeeded && res.value.length > 0) {
-          toAddr = res.value.map(function(r){ return r.emailAddress; }).join(', ');
+    item.to.getAsync(function(r) {
+      var to = 'Unknown';
+      if (r.status === Office.AsyncResultStatus.Succeeded && r.value.length > 0) {
+        to = r.value.map(function(x){ return x.emailAddress; }).join(', ');
+      }
+
+      // Register
+      var img = new Image();
+      img.src = SERVER + '/register?id=' + tId +
+        '&subject=' + encodeURIComponent(subj) +
+        '&to=' + encodeURIComponent(to);
+
+      var pixel = '<img src="' + SERVER + '/pixel/' + tId +
+        '" width="1" height="1" style="display:none" alt=""/>';
+
+      item.body.getAsync(Office.CoercionType.Html, function(br) {
+        if (br.status !== Office.AsyncResultStatus.Succeeded) {
+          setStatus('Error reading body: ' + br.error.message, 'red'); return;
         }
-
-        // Register with server
-        fetch(SERVER + '/register?id=' + trackId +
-          '&subject=' + encodeURIComponent(subj) +
-          '&to=' + encodeURIComponent(toAddr))
-          .catch(function(){});
-
-        // Build pixel
-        var pixel = '<img src="' + SERVER + '/pixel/' + trackId +
-          '" width="1" height="1" style="display:none;border:0" alt="" />';
-
-        item.body.getAsync(Office.CoercionType.Html, function(r) {
-          if (r.status !== Office.AsyncResultStatus.Succeeded) {
-            setStatus('❌ Body read error: ' + r.error.message, 'error');
-            return;
+        item.body.setAsync(br.value + pixel, { coercionType: Office.CoercionType.Html }, function(sr) {
+          if (sr.status === Office.AsyncResultStatus.Succeeded) {
+            setStatus('✅ Tracking ON!\nTo: ' + to, 'green');
+          } else {
+            setStatus('Set error: ' + sr.error.message, 'red');
           }
-          var newBody = r.value + pixel;
-          item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(s) {
-            if (s.status === Office.AsyncResultStatus.Succeeded) {
-              setStatus('✅ Tracking ON!\nTo: ' + toAddr, 'success');
-              document.getElementById('badge').classList.add('show');
-            } else {
-              setStatus('❌ Set error: ' + s.error.message, 'error');
-            }
-          });
         });
       });
-
-    } catch(e) {
-      setStatus('❌ Error: ' + e.message, 'error');
-    }
-  }
-
-  function removeTracking() {
-    if (!trackId) { setStatus('Koi tracking active nahi hai.', ''); return; }
-    var item = Office.context.mailbox.item;
-    item.body.getAsync(Office.CoercionType.Html, function(r) {
-      if (r.status !== Office.AsyncResultStatus.Succeeded) return;
-      var clean = r.value.replace(/<img[^>]*\/pixel\/trk_[^>]*>/gi, '');
-      item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function() {
-        trackId = null;
-        document.getElementById('badge').classList.remove('show');
-        setStatus('Tracking hata diya gaya.', '');
-      });
     });
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'red');
   }
+}
+
+function removeTracking() {
+  if (!tId) { setStatus('Koi tracking nahi hai.', ''); return; }
+  var item = Office.context.mailbox.item;
+  item.body.getAsync(Office.CoercionType.Html, function(r) {
+    if (r.status !== Office.AsyncResultStatus.Succeeded) return;
+    var clean = r.value.replace(/<img[^>]*onrender\.com\/pixel\/[^>]*>/gi, '');
+    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function() {
+      tId = null;
+      setStatus('Tracking hata diya.', '');
+    });
+  });
+}
 </script>
 </body>
 </html>
