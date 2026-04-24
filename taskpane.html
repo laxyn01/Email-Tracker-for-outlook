@@ -81,16 +81,27 @@ function addTracking() {
           '&subject=' + encodeURIComponent(subj) +
           '&to=' + encodeURIComponent(to)).catch(function(){});
 
-        // ✅ FIX: Pixel UPAR — email clip hone se pehle load hoga
+        // ✅ Pixel — 1x1 transparent, email ke andar sahi jagah
         var pixel = '<img src="' + SERVER + '/pixel/' + tId +
-          '" width="1" height="1" style="display:none" alt=""/>';
+          '" width="1" height="1" style="display:block;width:1px;height:1px;overflow:hidden;border:0;margin:0;padding:0" alt=""/>';
 
         item.body.getAsync(Office.CoercionType.Html, function(br) {
           if (br.status !== Office.AsyncResultStatus.Succeeded) {
             setStatus('Error: ' + br.error.message, 'red'); return;
           }
-          // Pixel pehle, phir body content
-          item.body.setAsync(pixel + br.value, { coercionType: Office.CoercionType.Html }, function(sr) {
+
+          var originalBody = br.value;
+          var newBody;
+
+          // ✅ FIX: Pixel ko <body> tag ke bilkul baad insert karo
+          if (originalBody.indexOf('<body') !== -1) {
+            newBody = originalBody.replace(/(<body[^>]*>)/i, '$1' + pixel);
+          } else {
+            // Agar body tag nahi mila toh shuru mein daalo
+            newBody = pixel + originalBody;
+          }
+
+          item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(sr) {
             if (sr.status === Office.AsyncResultStatus.Succeeded) {
               setStatus('✅ Tracking ON!\nTo: ' + to + '\nSubject: ' + subj, 'green');
             } else {
