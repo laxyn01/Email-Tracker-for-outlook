@@ -81,24 +81,25 @@ function addTracking() {
           '&subject=' + encodeURIComponent(subj) +
           '&to=' + encodeURIComponent(to)).catch(function(){});
 
-        // ✅ Pixel — 1x1 transparent, email ke andar sahi jagah
-        var pixel = '<img src="' + SERVER + '/pixel/' + tId +
-          '" width="1" height="1" style="display:block;width:1px;height:1px;overflow:hidden;border:0;margin:0;padding:0" alt=""/>';
+        // ✅ KEY FIX: elementToProof div mein wrap karo — Outlook strip nahi karta!
+        var pixel = '<div class="elementToProof">' +
+          '<img id="track-pixel" src="' + SERVER + '/pixel/' + tId +
+          '" width="1" height="1" style="display:none;border:0;margin:0;padding:0" alt=""/>' +
+          '</div>';
 
         item.body.getAsync(Office.CoercionType.Html, function(br) {
           if (br.status !== Office.AsyncResultStatus.Succeeded) {
             setStatus('Error: ' + br.error.message, 'red'); return;
           }
 
-          var originalBody = br.value;
+          var body = br.value;
           var newBody;
 
-          // ✅ FIX: Pixel ko <body> tag ke bilkul baad insert karo
-          if (originalBody.indexOf('<body') !== -1) {
-            newBody = originalBody.replace(/(<body[^>]*>)/i, '$1' + pixel);
+          // ✅ <body> tag ke andar sabse pehle insert karo
+          if (body.toLowerCase().indexOf('<body') !== -1) {
+            newBody = body.replace(/(<body[^>]*>)/i, '$1' + pixel);
           } else {
-            // Agar body tag nahi mila toh shuru mein daalo
-            newBody = pixel + originalBody;
+            newBody = pixel + body;
           }
 
           item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(sr) {
@@ -122,7 +123,7 @@ function removeTracking() {
   var item = Office.context.mailbox.item;
   item.body.getAsync(Office.CoercionType.Html, function(r) {
     if (r.status !== Office.AsyncResultStatus.Succeeded) return;
-    var clean = r.value.replace(/<img[^>]*onrender\.com\/pixel\/[^>]*>/gi, '');
+    var clean = r.value.replace(/<div class="elementToProof">[\s\S]*?<\/div>/gi, '');
     item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function() {
       tId = null;
       setStatus('Tracking hata diya.', '');
