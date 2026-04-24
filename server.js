@@ -234,7 +234,48 @@ app.get('/dashboard', (req, res) => {
   const total  = entries.length;
   const opened = entries.filter(([, e]) => e.opens.length > 0).length;
   const rate   = total > 0 ? Math.round(opened / total * 100) : 0;
+  const totalOpens = entries.reduce((s, [,e]) => s + e.opens.length, 0);
 
+  // ── Chart data: opens per day for last 30 days ──
+  const now30 = Date.now();
+  const DAY   = 86400000;
+  const chartDays = 30;
+  const dayCounts = {};
+  for (let i = 0; i < chartDays; i++) {
+    const d = new Date(now30 - i * DAY);
+    const key = d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short' });
+    dayCounts[key] = 0;
+  }
+  entries.forEach(([, e]) => {
+    (e.opens || []).forEach(o => {
+      const d = new Date(o.ts || 0);
+      const key = d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short' });
+      if (key in dayCounts) dayCounts[key]++;
+    });
+  });
+  const chartLabels = Object.keys(dayCounts).reverse();
+  const chartValues = chartLabels.map(k => dayCounts[k]);
+
+  // ── Top performing emails (by open count) ──
+  const topEmails = [...entries]
+    .filter(([, e]) => e.opens.length > 0)
+    .sort((a, b) => b[1].opens.length - a[1].opens.length)
+    .slice(0, 10);
+
+  const topRows = topEmails.length === 0
+    ? '<div class="empty-top">No opened emails yet.</div>'
+    : topEmails.map(([id, d], i) => `
+        <div class="top-row">
+          <span class="top-num">${i+1}</span>
+          <div class="top-info">
+            <div class="top-subj">${esc(d.subject)}</div>
+            <div class="top-to">${esc(d.to)}</div>
+          </div>
+          <span class="top-opens">${d.opens.length} open${d.opens.length>1?'s':''}</span>
+        </div>`
+    ).join('');
+
+  // ── Main table rows ──
   const rows = !total
     ? '<tr><td colspan="7" class="empty">No emails tracked yet. Open Outlook, compose, click Track.</td></tr>'
     : entries.map(([id, d]) => {
@@ -250,7 +291,7 @@ app.get('/dashboard', (req, res) => {
             <span class="ip">${esc(o.ip)}</span>
           </div>`
         ).join('') || '<span class="dim">—</span>';
-        return `<tr>
+        return `<tr class="erow" data-subj="${esc(d.subject.toLowerCase())}" data-to="${esc(d.to.toLowerCase())}" data-status="${isOpened?'opened':'not'}">
           <td class="subj">${esc(d.subject)}</td>
           <td class="sm">${esc(d.to)}</td>
           <td class="sm grey">${esc(d.sentAt)}</td>
@@ -270,57 +311,204 @@ app.get('/dashboard', (req, res) => {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="15">
 <title>Email Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:#eef1fb;color:#1a1a2e}
-.hdr{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:22px 32px;display:flex;justify-content:space-between;align-items:center}
-.hdr h1{font-size:18px;font-weight:700}.hdr p{font-size:11px;opacity:.7;margin-top:4px}
-.live{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f4f6fb;color:#1a1a2e}
+
+/* ── Header ── */
+.hdr{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:18px 32px;display:flex;justify-content:space-between;align-items:center}
+.hdr h1{font-size:17px;font-weight:700}.hdr p{font-size:11px;opacity:.65;margin-top:3px}
+.live{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 13px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px}
 .dot{width:7px;height:7px;background:#4ade80;border-radius:50%;animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.wrap{padding:24px 32px}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
-.stat{background:#fff;border-radius:14px;padding:18px;text-align:center;box-shadow:0 2px 12px rgba(79,70,229,.08)}
-.sn{font-size:36px;font-weight:800;color:#4f46e5}.sn.g{color:#16a34a}.sn.r{color:#dc2626}.sn.a{color:#d97706}
-.sl{font-size:11px;color:#9ca3af;margin-top:4px;font-weight:500}
-.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 16px rgba(79,70,229,.1)}
+
+/* ── Layout ── */
+.wrap{padding:22px 32px;max-width:1400px;margin:0 auto}
+.section-title{font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:14px}
+.section-sub{font-size:11px;color:#9ca3af;margin-top:2px;font-weight:400}
+
+/* ── Stat cards ── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.stat{background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 1px 8px rgba(79,70,229,.07);display:flex;align-items:center;gap:14px}
+.stat-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.ic-blue{background:#ede9fe}.ic-green{background:#dcfce7}.ic-red{background:#fee2e2}.ic-amber{background:#fef3c7}
+.sn{font-size:28px;font-weight:800;color:#1a1a2e;line-height:1}
+.sl{font-size:11px;color:#9ca3af;margin-top:3px}
+
+/* ── Two-col charts row ── */
+.charts-row{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:24px}
+.chart-card{background:#fff;border-radius:14px;padding:20px;box-shadow:0 1px 8px rgba(79,70,229,.07)}
+.chart-wrap{position:relative;height:180px;margin-top:12px}
+
+/* ── Top emails ── */
+.top-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6}
+.top-row:last-child{border-bottom:none}
+.top-num{width:24px;height:24px;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#6b7280;flex-shrink:0}
+.top-info{flex:1;min-width:0}
+.top-subj{font-size:12px;font-weight:600;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top-to{font-size:10px;color:#9ca3af;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top-opens{font-size:11px;font-weight:700;color:#4f46e5;white-space:nowrap}
+.empty-top{text-align:center;padding:30px;color:#9ca3af;font-size:12px}
+
+/* ── Table card ── */
+.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 8px rgba(79,70,229,.07);margin-bottom:16px}
+.table-toolbar{display:flex;gap:10px;padding:14px 16px;border-bottom:1px solid #f3f4f6;align-items:center}
+.search-wrap{flex:1;position:relative}
+.search-wrap input{width:100%;padding:8px 12px 8px 34px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;outline:none;color:#374151}
+.search-wrap input:focus{border-color:#4f46e5}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px}
+select{padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;color:#374151;outline:none;cursor:pointer}
+select:focus{border-color:#4f46e5}
 table{width:100%;border-collapse:collapse}
 thead tr{background:linear-gradient(135deg,#4f46e5,#7c3aed)}
-th{color:#fff;padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
-td{padding:12px 16px;border-bottom:1px solid #f3f4f6;vertical-align:top;font-size:12px}
-tr:last-child td{border-bottom:none}tr:hover td{background:#fafbff}
-.subj{font-weight:600;font-size:13px;color:#1a1a2e}.sm{font-size:11px}.grey{color:#9ca3af}
+th{color:#fff;padding:11px 16px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase}
+td{padding:11px 16px;border-bottom:1px solid #f3f4f6;vertical-align:top;font-size:12px}
+tr:last-child td{border-bottom:none}
+tr.erow:hover td{background:#fafbff}
+tr.erow.hidden{display:none}
+.subj{font-weight:600;font-size:12px;color:#1a1a2e}.sm{font-size:11px}.grey{color:#9ca3af}
 .empty{text-align:center;padding:50px;color:#9ca3af;font-size:13px}
-.badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
 .badge.g{background:#dcfce7;color:#15803d}.badge.r{background:#fee2e2;color:#b91c1c}
-.orow{display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:4px;flex-wrap:wrap}
+.orow{display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:3px;flex-wrap:wrap}
 .n{background:#4f46e5;color:#fff;border-radius:10px;padding:1px 7px;font-weight:700;font-size:9px}
 .chip{background:#f3f4f6;border-radius:5px;padding:1px 7px;font-size:10px;color:#374151}
 .blue{background:#ede9fe;color:#6d28d9}.ip{color:#d1d5db;font-family:monospace;font-size:9px}
 .dim{color:#d1d5db;font-size:10px}
-.foot{text-align:center;padding:16px;color:#9ca3af;font-size:11px}
-</style></head><body>
+.foot{text-align:center;padding:14px;color:#9ca3af;font-size:11px}
+.no-results{display:none;text-align:center;padding:40px;color:#9ca3af;font-size:13px}
+</style>
+</head><body>
+
 <div class="hdr">
   <div><h1>📧 Email Tracker Dashboard</h1>
-  <p>Auto-refresh every 15s • Bots &amp; proxies filtered • Data persisted to disk</p></div>
+  <p>Auto-refresh every 15s &nbsp;•&nbsp; Bots &amp; proxies filtered &nbsp;•&nbsp; Data persisted to disk</p></div>
   <div class="live"><span class="dot"></span> Live</div>
 </div>
+
 <div class="wrap">
+
+  <!-- Stat Cards -->
   <div class="stats">
-    <div class="stat"><div class="sn">${total}</div><div class="sl">Total Tracked</div></div>
-    <div class="stat"><div class="sn g">${opened}</div><div class="sl">✅ Opened</div></div>
-    <div class="stat"><div class="sn r">${total-opened}</div><div class="sl">❌ Not Opened</div></div>
-    <div class="stat"><div class="sn a">${rate}%</div><div class="sl">Open Rate</div></div>
+    <div class="stat">
+      <div class="stat-icon ic-blue">📧</div>
+      <div><div class="sn">${total}</div><div class="sl">Total Tracked</div></div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon ic-green">✅</div>
+      <div><div class="sn" style="color:#16a34a">${opened}</div><div class="sl">Opened</div></div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon ic-red">❌</div>
+      <div><div class="sn" style="color:#dc2626">${total - opened}</div><div class="sl">Not Opened</div></div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon ic-amber">📈</div>
+      <div><div class="sn" style="color:#d97706">${rate}%</div><div class="sl">Open Rate</div></div>
+    </div>
   </div>
-  <div class="card"><table>
-    <thead><tr>
-      <th>Subject</th><th>Sent To</th><th>Sent At</th>
-      <th>Status</th><th>Last Opened</th><th>Device</th><th>All Opens</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table></div>
+
+  <!-- Charts Row -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="section-title">Activity Trends <span class="section-sub">(Last 30 Days)</span></div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">Top Performing Emails <span class="section-sub">by opens</span></div>
+      <div style="margin-top:8px">${topRows}</div>
+    </div>
+  </div>
+
+  <!-- Tracked Emails Table -->
+  <div class="section-title" style="margin-bottom:12px">
+    All Tracked Emails
+    <span class="section-sub">(${total} total)</span>
+  </div>
+  <div class="card">
+    <div class="table-toolbar">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search by subject or email..." oninput="filterTable()">
+      </div>
+      <select id="statusFilter" onchange="filterTable()">
+        <option value="all">All Status</option>
+        <option value="opened">Opened</option>
+        <option value="not">Not Opened</option>
+      </select>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Subject</th><th>Sent To</th><th>Sent At</th>
+        <th>Status</th><th>Last Opened</th><th>Device</th><th>All Opens</th>
+      </tr></thead>
+      <tbody id="tableBody">${rows}</tbody>
+    </table>
+    <div class="no-results" id="noResults">No emails match your search.</div>
+  </div>
+
 </div>
 <div class="foot">Newest emails shown first. Data saved to disk — survives server restarts.</div>
+
+<script>
+// ── Trend Chart ───────────────────────────────────────────────────────────────
+const labels = ${JSON.stringify(chartLabels)};
+const values = ${JSON.stringify(chartValues)};
+const ctx = document.getElementById('trendChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'Opens',
+      data: values,
+      borderColor: '#4f46e5',
+      backgroundColor: 'rgba(79,70,229,0.08)',
+      borderWidth: 2,
+      pointRadius: 3,
+      pointBackgroundColor: '#4f46e5',
+      fill: true,
+      tension: 0.4,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' opens' } }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { size: 9 }, maxTicksLimit: 8, color: '#9ca3af' }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { stepSize: 1, font: { size: 9 }, color: '#9ca3af' },
+        grid: { color: '#f3f4f6' }
+      }
+    }
+  }
+});
+
+// ── Search + Filter ───────────────────────────────────────────────────────────
+function filterTable() {
+  const q      = document.getElementById('searchInput').value.toLowerCase().trim();
+  const status = document.getElementById('statusFilter').value;
+  const rows   = document.querySelectorAll('tr.erow');
+  let visible  = 0;
+  rows.forEach(r => {
+    const matchQ = !q || r.dataset.subj.includes(q) || r.dataset.to.includes(q);
+    const matchS = status === 'all' || r.dataset.status === status;
+    const show   = matchQ && matchS;
+    r.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+  document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
+}
+</script>
 </body></html>`);
 });
 
