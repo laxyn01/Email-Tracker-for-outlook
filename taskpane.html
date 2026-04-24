@@ -66,7 +66,6 @@ function addTracking() {
     var item = Office.context.mailbox.item;
     tId = genId();
 
-    // ✅ FIX: subject.getAsync() — proper async call
     item.subject.getAsync(function(subjResult) {
       var subj = (subjResult.status === Office.AsyncResultStatus.Succeeded && subjResult.value)
         ? subjResult.value : 'No Subject';
@@ -82,7 +81,7 @@ function addTracking() {
           '&subject=' + encodeURIComponent(subj) +
           '&to=' + encodeURIComponent(to)).catch(function(){});
 
-        // Build pixel
+        // ✅ FIX: Pixel UPAR — email clip hone se pehle load hoga
         var pixel = '<img src="' + SERVER + '/pixel/' + tId +
           '" width="1" height="1" style="display:none" alt=""/>';
 
@@ -90,7 +89,8 @@ function addTracking() {
           if (br.status !== Office.AsyncResultStatus.Succeeded) {
             setStatus('Error: ' + br.error.message, 'red'); return;
           }
-          item.body.setAsync(br.value + pixel, { coercionType: Office.CoercionType.Html }, function(sr) {
+          // Pixel pehle, phir body content
+          item.body.setAsync(pixel + br.value, { coercionType: Office.CoercionType.Html }, function(sr) {
             if (sr.status === Office.AsyncResultStatus.Succeeded) {
               setStatus('✅ Tracking ON!\nTo: ' + to + '\nSubject: ' + subj, 'green');
             } else {
