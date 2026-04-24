@@ -230,6 +230,7 @@ app.get('/debug/:id', (req, res) => {
 // ── /dashboard ────────────────────────────────────────────────────────────────
 app.get('/dashboard', (req, res) => {
   const entries = Object.entries(emailLogs)
+    .filter(([, e]) => e.subject !== 'Unknown (pre-restart)')
     .sort((a, b) => (b[1].sentTimestamp || 0) - (a[1].sentTimestamp || 0));
   const total  = entries.length;
   const opened = entries.filter(([, e]) => e.opens.length > 0).length;
