@@ -15,6 +15,42 @@ app.use((req, res, next) => {
   next();
 });
 
+// ✅ Bot/Proxy user agents jo ignore karne hain
+const IGNORED_AGENTS = [
+  'googleimageproxy',
+  'googlebot',
+  'ggpht.com',
+  'yahoo! slurp',
+  'bingbot',
+  'duckduckbot',
+  'facebookexternalhit',
+  'twitterbot',
+  'linkedinbot',
+  'preview',
+  'prefetch',
+  'netseer',
+  'outbound-article-filter',
+  'ms-office',
+  'apple mail',
+  'thunderbird'
+];
+
+function isBot(userAgent) {
+  const ua = (userAgent || '').toLowerCase();
+  return IGNORED_AGENTS.some(bot => ua.includes(bot));
+}
+
+function getDevice(userAgent) {
+  const ua = userAgent || '';
+  if (ua.includes('iPhone')) return '📱 iPhone';
+  if (ua.includes('Android')) return '📱 Android';
+  if (ua.includes('Mobile')) return '📱 Mobile';
+  if (ua.includes('iPad')) return '📱 iPad';
+  if (ua.includes('Windows')) return '💻 Windows';
+  if (ua.includes('Mac')) return '💻 Mac';
+  return '💻 Desktop';
+}
+
 app.get('/register', (req, res) => {
   const { id, subject, to } = req.query;
   if (id) {
@@ -32,21 +68,20 @@ app.get('/register', (req, res) => {
 
 app.get('/pixel/:id', (req, res) => {
   const { id } = req.params;
-  const userAgent = req.headers['user-agent'] || 'Unknown';
+  const userAgent = req.headers['user-agent'] || '';
 
-  // ✅ FIX: Grace period 10 seconds only — sirf Outlook ka turant preview ignore
   if (emailLogs[id]) {
-    const timeSinceSent = Date.now() - (emailLogs[id].sentTimestamp || 0);
-    if (timeSinceSent > 10000) {
+    if (isBot(userAgent)) {
+      // ✅ Google/Yahoo proxy — ignore karo
+      console.log(`🤖 Bot ignored: ${userAgent.substring(0, 60)}`);
+    } else {
+      // ✅ Real open — log karo
       emailLogs[id].opens.push({
         time: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        device: userAgent.includes('Mobile') ? '📱 Mobile' :
-                userAgent.includes('iPhone') ? '📱 iPhone' :
-                userAgent.includes('Android') ? '📱 Android' : '💻 Desktop'
+        device: getDevice(userAgent),
+        ua: userAgent.substring(0, 80)
       });
-      console.log(`📬 Opened! ID: ${id} | Device: ${userAgent.substring(0,50)}`);
-    } else {
-      console.log(`⚡ Skipped (${Math.round(timeSinceSent/1000)}s) — too soon`);
+      console.log(`📬 Real Open! ID: ${id} | Device: ${getDevice(userAgent)}`);
     }
   }
 
@@ -68,7 +103,7 @@ app.get('/dashboard', (req, res) => {
   const entries = Object.entries(emailLogs).reverse();
 
   if (entries.length === 0) {
-    rows = `<tr><td colspan="5" style="text-align:center;padding:30px;color:#888">Koi email track nahi hui abhi tak 📭</td></tr>`;
+    rows = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#888">Koi email track nahi hui abhi tak 📭</td></tr>`;
   } else {
     for (const [id, data] of entries) {
       const opened = data.opens.length > 0;
@@ -91,8 +126,8 @@ app.get('/dashboard', (req, res) => {
   }
 
   const total = Object.keys(emailLogs).length;
-  const opened = Object.values(emailLogs).filter(e => e.opens.length > 0).length;
-  const notOpened = total - opened;
+  const openedCount = Object.values(emailLogs).filter(e => e.opens.length > 0).length;
+  const notOpened = total - openedCount;
 
   res.send(`<!DOCTYPE html>
 <html>
@@ -125,40 +160,19 @@ app.get('/dashboard', (req, res) => {
   <div class="header">
     <div>
       <h1>📧 Email Tracker Dashboard</h1>
-      <p>Auto refresh every 15 seconds</p>
+      <p>Auto refresh every 15 seconds • Bots & proxies automatically filtered</p>
     </div>
     <div class="refresh-badge">🔄 Live</div>
   </div>
-
   <div class="stats">
-    <div class="stat">
-      <div class="stat-num">${total}</div>
-      <div class="stat-label">Total Tracked</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num green">${opened}</div>
-      <div class="stat-label">✅ Opened</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num red">${notOpened}</div>
-      <div class="stat-label">❌ Not Opened</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num" style="color:#f59e0b">${total > 0 ? Math.round(opened/total*100) : 0}%</div>
-      <div class="stat-label">Open Rate</div>
-    </div>
+    <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">Total Tracked</div></div>
+    <div class="stat"><div class="stat-num green">${openedCount}</div><div class="stat-label">✅ Opened</div></div>
+    <div class="stat"><div class="stat-num red">${notOpened}</div><div class="stat-label">❌ Not Opened</div></div>
+    <div class="stat"><div class="stat-num" style="color:#f59e0b">${total > 0 ? Math.round(openedCount/total*100) : 0}%</div><div class="stat-label">Open Rate</div></div>
   </div>
-
   <div class="card">
     <table>
-      <tr>
-        <th>Subject</th>
-        <th>Sent To</th>
-        <th>Sent At</th>
-        <th>Status</th>
-        <th>Last Opened</th>
-        <th>Device</th>
-      </tr>
+      <tr><th>Subject</th><th>Sent To</th><th>Sent At</th><th>Status</th><th>Last Opened</th><th>Device</th></tr>
       ${rows}
     </table>
   </div>
