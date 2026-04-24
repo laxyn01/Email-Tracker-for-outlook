@@ -14,6 +14,7 @@
       border-radius: 8px; padding: 11px;
       font-size: 13px; color: #444;
       margin-bottom: 12px; min-height: 44px; line-height: 1.5;
+      white-space: pre-line;
     }
     .green { background: #f0fdf4 !important; border-color: #22c55e !important; color: #166534 !important; }
     .red   { background: #fef2f2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
@@ -41,6 +42,10 @@
 var SERVER = 'https://email-tracker-outlook.onrender.com';
 var tId = null;
 
+// ─── UNIQUE MARKER so we can find & remove our pixel reliably ───────────────
+var MARKER_START = '<!--ETRK_START-->';
+var MARKER_END   = '<!--ETRK_END-->';
+
 function setStatus(msg, cls) {
   var el = document.getElementById('status');
   el.textContent = msg;
@@ -49,22 +54,44 @@ function setStatus(msg, cls) {
 
 if (Office.onReady) {
   Office.onReady(function() {
-    setStatus('Ready! Track dabao before sending.', '');
+    setStatus('Ready! Click "Track This Email" before sending.', '');
   });
 } else {
   Office.initialize = function() {
-    setStatus('Ready! Track dabao before sending.', '');
+    setStatus('Ready! Click "Track This Email" before sending.', '');
   };
 }
 
 function genId() {
-  return 'trk' + Date.now() + Math.random().toString(36).substr(2,5);
+  return 'trk' + Date.now() + Math.random().toString(36).substr(2, 6);
+}
+
+function buildPixelHtml(id) {
+  // ── FIX 1: NO display:none — hidden pixels are blocked by Gmail/Apple Mail.
+  // ── FIX 2: width/height 1px in attributes AND style — belt + suspenders.
+  // ── FIX 3: elementToProof wrapper — Outlook doesn't strip this during send.
+  // ── FIX 4: Unique HTML comment markers for reliable find/remove.
+  return MARKER_START +
+    '<div class="elementToProof" style="line-height:0;font-size:0;overflow:hidden;max-height:1px">' +
+    '<img src="' + SERVER + '/pixel/' + id + '"' +
+    ' width="1" height="1"' +
+    ' style="width:1px;height:1px;border:0;margin:0;padding:0;opacity:0"' +
+    ' alt=""' +
+    '/>' +
+    '</div>' +
+    MARKER_END;
 }
 
 function addTracking() {
   try {
+    // If already tracked in this session, warn user
+    if (tId) {
+      setStatus('Already tracked! Remove first if you want to reset.', 'red');
+      return;
+    }
+
     var item = Office.context.mailbox.item;
-    tId = genId();
+    var newId = genId();
 
     item.subject.getAsync(function(subjResult) {
       var subj = (subjResult.status === Office.AsyncResultStatus.Succeeded && subjResult.value)
@@ -72,41 +99,41 @@ function addTracking() {
 
       item.to.getAsync(function(toResult) {
         var to = 'Unknown';
-        if (toResult.status === Office.AsyncResultStatus.Succeeded && toResult.value.length > 0) {
-          to = toResult.value.map(function(x){ return x.emailAddress; }).join(', ');
+        if (toResult.status === Office.AsyncResultStatus.Succeeded && toResult.value && toResult.value.length > 0) {
+          to = toResult.value.map(function(x) { return x.emailAddress; }).join(', ');
         }
 
-        // Register with server
-        fetch(SERVER + '/register?id=' + tId +
+        // Register with server BEFORE injecting pixel
+        fetch(SERVER + '/register?id=' + encodeURIComponent(newId) +
           '&subject=' + encodeURIComponent(subj) +
-          '&to=' + encodeURIComponent(to)).catch(function(){});
+          '&to=' + encodeURIComponent(to))
+          .catch(function() {});
 
-        // ✅ KEY FIX: elementToProof div mein wrap karo — Outlook strip nahi karta!
-        var pixel = '<div class="elementToProof">' +
-          '<img id="track-pixel" src="' + SERVER + '/pixel/' + tId +
-          '" width="1" height="1" style="display:none;border:0;margin:0;padding:0" alt=""/>' +
-          '</div>';
+        var pixel = buildPixelHtml(newId);
 
         item.body.getAsync(Office.CoercionType.Html, function(br) {
           if (br.status !== Office.AsyncResultStatus.Succeeded) {
-            setStatus('Error: ' + br.error.message, 'red'); return;
+            setStatus('Error reading body: ' + br.error.message, 'red');
+            return;
           }
 
           var body = br.value;
-          var newBody;
 
-          // ✅ <body> tag ke andar sabse pehle insert karo
-          if (body.toLowerCase().indexOf('<body') !== -1) {
-            newBody = body.replace(/(<body[^>]*>)/i, '$1' + pixel);
+          // ── FIX 5: Don't insert at <body> start — insert just before </body>
+          // This avoids Gmail clipping AND Outlook preview issues.
+          var newBody;
+          if (body.toLowerCase().indexOf('</body>') !== -1) {
+            newBody = body.replace(/<\/body>/i, pixel + '</body>');
           } else {
-            newBody = pixel + body;
+            newBody = body + pixel;
           }
 
           item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(sr) {
             if (sr.status === Office.AsyncResultStatus.Succeeded) {
-              setStatus('✅ Tracking ON!\nTo: ' + to + '\nSubject: ' + subj, 'green');
+              tId = newId;
+              setStatus('✅ Tracking ON!\nTo: ' + to + '\nID: ' + newId, 'green');
             } else {
-              setStatus('Error: ' + sr.error.message, 'red');
+              setStatus('Error injecting pixel: ' + sr.error.message, 'red');
             }
           });
         });
@@ -119,14 +146,37 @@ function addTracking() {
 }
 
 function removeTracking() {
-  if (!tId) { setStatus('Koi tracking nahi hai.', ''); return; }
+  if (!tId) {
+    setStatus('No active tracking to remove.', '');
+    return;
+  }
   var item = Office.context.mailbox.item;
   item.body.getAsync(Office.CoercionType.Html, function(r) {
-    if (r.status !== Office.AsyncResultStatus.Succeeded) return;
-    var clean = r.value.replace(/<div class="elementToProof">[\s\S]*?<\/div>/gi, '');
-    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function() {
+    if (r.status !== Office.AsyncResultStatus.Succeeded) {
+      setStatus('Error reading body for removal.', 'red');
+      return;
+    }
+
+    // ── FIX 6: Use comment markers for precise removal — doesn't touch other elementToProof divs
+    var body = r.value;
+    var startIdx = body.indexOf(MARKER_START);
+    var endIdx   = body.indexOf(MARKER_END);
+
+    if (startIdx === -1 || endIdx === -1) {
+      setStatus('Pixel not found in body (may have already been removed).', '');
       tId = null;
-      setStatus('Tracking hata diya.', '');
+      return;
+    }
+
+    var clean = body.substring(0, startIdx) + body.substring(endIdx + MARKER_END.length);
+
+    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function(sr) {
+      if (sr.status === Office.AsyncResultStatus.Succeeded) {
+        tId = null;
+        setStatus('Tracking removed.', '');
+      } else {
+        setStatus('Error removing pixel: ' + sr.error.message, 'red');
+      }
     });
   });
 }
