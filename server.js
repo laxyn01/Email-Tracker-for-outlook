@@ -15,37 +15,25 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Bot/Proxy user agents jo ignore karne hain
-const IGNORED_AGENTS = [
-  'googleimageproxy',
-  'googlebot',
-  'ggpht.com',
-  'yahoo! slurp',
-  'bingbot',
-  'duckduckbot',
-  'facebookexternalhit',
-  'twitterbot',
-  'linkedinbot',
-  'preview',
-  'prefetch',
-  'netseer',
-  'outbound-article-filter',
-  'ms-office',
-  'apple mail',
-  'thunderbird'
+// ✅ Known bots/proxies ignore karo
+const BOT_AGENTS = [
+  'googleimageproxy', 'ggpht.com', 'googlebot',
+  'yahoo! slurp', 'bingbot', 'duckduckbot',
+  'facebookexternalhit', 'twitterbot', 'linkedinbot',
+  'ms-office', 'preview', 'prefetch'
 ];
 
-function isBot(userAgent) {
-  const ua = (userAgent || '').toLowerCase();
-  return IGNORED_AGENTS.some(bot => ua.includes(bot));
+function isBot(ua) {
+  const u = (ua || '').toLowerCase();
+  return BOT_AGENTS.some(b => u.includes(b));
 }
 
-function getDevice(userAgent) {
-  const ua = userAgent || '';
+function getDevice(ua) {
+  if (!ua) return '💻 Desktop';
   if (ua.includes('iPhone')) return '📱 iPhone';
   if (ua.includes('Android')) return '📱 Android';
-  if (ua.includes('Mobile')) return '📱 Mobile';
   if (ua.includes('iPad')) return '📱 iPad';
+  if (ua.includes('Mobile')) return '📱 Mobile';
   if (ua.includes('Windows')) return '💻 Windows';
   if (ua.includes('Mac')) return '💻 Mac';
   return '💻 Desktop';
@@ -68,20 +56,26 @@ app.get('/register', (req, res) => {
 
 app.get('/pixel/:id', (req, res) => {
   const { id } = req.params;
-  const userAgent = req.headers['user-agent'] || '';
+  const ua = req.headers['user-agent'] || '';
+  const ip = req.headers['x-forwarded-for'] || req.ip;
 
   if (emailLogs[id]) {
-    if (isBot(userAgent)) {
-      // ✅ Google/Yahoo proxy — ignore karo
-      console.log(`🤖 Bot ignored: ${userAgent.substring(0, 60)}`);
+    const timeSinceSent = Date.now() - (emailLogs[id].sentTimestamp || 0);
+    const bot = isBot(ua);
+    const tooSoon = timeSinceSent < 8000; // 8 second grace — Outlook preview ignore
+
+    if (bot) {
+      console.log(`🤖 Bot ignored: ${ua.substring(0, 50)}`);
+    } else if (tooSoon) {
+      console.log(`⚡ Too soon (${Math.round(timeSinceSent/1000)}s) — Outlook preview ignored`);
     } else {
-      // ✅ Real open — log karo
+      // ✅ Real open!
       emailLogs[id].opens.push({
         time: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        device: getDevice(userAgent),
-        ua: userAgent.substring(0, 80)
+        device: getDevice(ua),
+        ip: ip ? ip.split(',')[0].trim() : 'Unknown'
       });
-      console.log(`📬 Real Open! ID: ${id} | Device: ${getDevice(userAgent)}`);
+      console.log(`📬 REAL Open! → ${emailLogs[id].to} | ${getDevice(ua)}`);
     }
   }
 
@@ -109,19 +103,16 @@ app.get('/dashboard', (req, res) => {
       const opened = data.opens.length > 0;
       const lastOpen = opened ? data.opens[data.opens.length - 1].time : '—';
       const device = opened ? data.opens[data.opens.length - 1].device : '—';
-      rows += `
-        <tr>
-          <td>${data.subject}</td>
-          <td>${data.to}</td>
-          <td>${data.sentAt}</td>
-          <td>
-            <span style="background:${opened ? '#22c55e' : '#ef4444'};color:white;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600">
-              ${opened ? `✅ Opened (${data.opens.length}x)` : '❌ Not Opened'}
-            </span>
-          </td>
-          <td>${lastOpen}</td>
-          <td>${device}</td>
-        </tr>`;
+      rows += `<tr>
+        <td>${data.subject}</td>
+        <td>${data.to}</td>
+        <td>${data.sentAt}</td>
+        <td><span style="background:${opened ? '#22c55e' : '#ef4444'};color:white;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600">
+          ${opened ? `✅ Opened (${data.opens.length}x)` : '❌ Not Opened'}
+        </span></td>
+        <td>${lastOpen}</td>
+        <td>${device}</td>
+      </tr>`;
     }
   }
 
@@ -132,42 +123,37 @@ app.get('/dashboard', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html>
 <head>
-  <title>📧 Email Tracker Dashboard</title>
+  <title>📧 Email Tracker</title>
   <meta charset="UTF-8">
   <meta http-equiv="refresh" content="15">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; padding: 30px; }
-    .header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 24px 30px; border-radius: 12px; margin-bottom: 20px; display:flex; justify-content:space-between; align-items:center; }
-    .header h1 { font-size: 22px; }
-    .header p { opacity: 0.8; font-size: 13px; margin-top:4px; }
-    .refresh-badge { background: rgba(255,255,255,0.2); padding: 6px 14px; border-radius: 20px; font-size: 12px; }
-    .stats { display: flex; gap: 16px; margin-bottom: 20px; }
-    .stat { background: white; border-radius: 10px; padding: 16px 20px; flex: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align:center; }
-    .stat-num { font-size: 32px; font-weight: 700; color: #667eea; }
-    .stat-num.green { color: #22c55e; }
-    .stat-num.red { color: #ef4444; }
-    .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
-    .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #667eea; color: white; padding: 14px 16px; text-align: left; font-weight: 600; font-size: 13px; }
-    td { padding: 13px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; color: #444; }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #fafafa; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',sans-serif;background:#f0f4f8;padding:30px}
+    .header{background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:24px 30px;border-radius:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+    .header h1{font-size:22px}
+    .header p{opacity:.8;font-size:13px;margin-top:4px}
+    .badge{background:rgba(255,255,255,.2);padding:6px 14px;border-radius:20px;font-size:12px}
+    .stats{display:flex;gap:16px;margin-bottom:20px}
+    .stat{background:white;border-radius:10px;padding:16px 20px;flex:1;box-shadow:0 2px 8px rgba(0,0,0,.06);text-align:center}
+    .stat-num{font-size:32px;font-weight:700;color:#667eea}
+    .stat-label{font-size:13px;color:#888;margin-top:4px}
+    .card{background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+    table{width:100%;border-collapse:collapse}
+    th{background:#667eea;color:white;padding:14px 16px;text-align:left;font-weight:600;font-size:13px}
+    td{padding:13px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#444}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:#fafafa}
   </style>
 </head>
 <body>
   <div class="header">
-    <div>
-      <h1>📧 Email Tracker Dashboard</h1>
-      <p>Auto refresh every 15 seconds • Bots & proxies automatically filtered</p>
-    </div>
-    <div class="refresh-badge">🔄 Live</div>
+    <div><h1>📧 Email Tracker Dashboard</h1><p>Auto refresh every 15s • Bots filtered automatically</p></div>
+    <div class="badge">🔄 Live</div>
   </div>
   <div class="stats">
     <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">Total Tracked</div></div>
-    <div class="stat"><div class="stat-num green">${openedCount}</div><div class="stat-label">✅ Opened</div></div>
-    <div class="stat"><div class="stat-num red">${notOpened}</div><div class="stat-label">❌ Not Opened</div></div>
+    <div class="stat"><div class="stat-num" style="color:#22c55e">${openedCount}</div><div class="stat-label">✅ Opened</div></div>
+    <div class="stat"><div class="stat-num" style="color:#ef4444">${notOpened}</div><div class="stat-label">❌ Not Opened</div></div>
     <div class="stat"><div class="stat-num" style="color:#f59e0b">${total > 0 ? Math.round(openedCount/total*100) : 0}%</div><div class="stat-label">Open Rate</div></div>
   </div>
   <div class="card">
@@ -181,4 +167,4 @@ app.get('/dashboard', (req, res) => {
 });
 
 app.get('/', (req, res) => res.send('✅ Email Tracker Server is Running!'));
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
