@@ -4,181 +4,239 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
   <title>Email Tracker</title>
-  <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; padding: 14px; background: #f8f9ff; }
-    h2 { color: #667eea; font-size: 16px; margin-bottom: 12px; }
-    #status {
-      background: #fff; border: 1px solid #dde0ff;
-      border-radius: 8px; padding: 11px;
-      font-size: 13px; color: #444;
-      margin-bottom: 12px; min-height: 44px; line-height: 1.5;
-      white-space: pre-line;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f7ff; padding: 16px; font-size: 13px; }
+
+    .logo { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .logo span:first-child { font-size: 20px; }
+    .logo span:last-child  { font-size: 15px; font-weight: 700; color: #5046e4; }
+
+    #box {
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+      line-height: 1.55; background: #fff; border: 1.5px solid #dde1ff;
+      color: #444; min-height: 52px;
     }
-    .green { background: #f0fdf4 !important; border-color: #22c55e !important; color: #166534 !important; }
-    .red   { background: #fef2f2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+    #box.green  { background: #f0fdf4; border-color: #4ade80; color: #14532d; }
+    #box.red    { background: #fff1f2; border-color: #f87171; color: #7f1d1d; }
+    #box.amber  { background: #fffbeb; border-color: #fbbf24; color: #78350f; }
+    .bt  { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+    .bd  { font-size: 12px; opacity: .85; white-space: pre-line; }
+    .obadge { display: inline-block; background: #4ade80; color: #14532d;
+              border-radius: 20px; padding: 1px 9px; font-weight: 700; font-size: 12px; margin-left: 4px; }
+
     button {
-      width: 100%; padding: 11px; border: none;
-      border-radius: 8px; font-size: 14px;
-      font-weight: 600; cursor: pointer; margin-bottom: 8px;
+      width: 100%; padding: 11px; border: none; border-radius: 9px;
+      font-size: 13px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
     }
+    button:active  { opacity: .8; }
+    button:disabled { opacity: .4; cursor: default; }
     #btnTrack  { background: linear-gradient(135deg,#667eea,#764ba2); color: #fff; }
-    #btnRemove { background: #efefef; color: #555; }
-    #dash { text-align: center; margin-top: 10px; font-size: 12px; }
-    #dash a { color: #667eea; }
+    #btnRemove { background: #fee2e2; color: #991b1b; }
+    #btnCheck  { background: #f3f4f6; color: #555; }
+
+    hr { border: none; border-top: 1px solid #e8eaff; margin: 8px 0 10px; }
+    .foot { text-align: center; }
+    .foot a { color: #667eea; font-size: 12px; text-decoration: none; }
+    .foot a:hover { text-decoration: underline; }
+
+    .spin { display:inline-block; width:12px; height:12px; border:2px solid rgba(255,255,255,.3);
+            border-top-color:#fff; border-radius:50%; animation:sp .6s linear infinite;
+            vertical-align:middle; margin-right:5px; }
+    @keyframes sp { to { transform:rotate(360deg); } }
   </style>
 </head>
 <body>
-  <h2>📧 Email Tracker</h2>
-  <div id="status">Initializing...</div>
-  <button id="btnTrack"  onclick="addTracking()">🔍 Track This Email</button>
-  <button id="btnRemove" onclick="removeTracking()">✖ Remove Tracking</button>
-  <div id="dash">
-    <a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">📊 Open Dashboard</a>
-  </div>
+
+<div class="logo"><span>📧</span><span>Email Tracker</span></div>
+
+<div id="box"><div class="bt">Initializing…</div></div>
+
+<button id="btnTrack"  onclick="addTracking()"   disabled>🔍 Track This Email</button>
+<button id="btnRemove" onclick="removeTracking()" disabled>✖ Remove Tracking</button>
+
+<hr>
+
+<button id="btnCheck"  onclick="checkStatus()"   disabled>🔄 Check Open Status</button>
+
+<div class="foot" style="margin-top:10px">
+  <a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">📊 Open Dashboard →</a>
+</div>
 
 <script>
 var SERVER = 'https://email-tracker-outlook.onrender.com';
-var tId = null;
+var MA = '<!--ET-S-->';
+var MB = '<!--ET-E-->';
 
-// ─── UNIQUE MARKER so we can find & remove our pixel reliably ───────────────
-var MARKER_START = '<!--ETRK_START-->';
-var MARKER_END   = '<!--ETRK_END-->';
+var trackId  = null;
+var pollTimer = null;
 
-function setStatus(msg, cls) {
-  var el = document.getElementById('status');
-  el.textContent = msg;
-  el.className = cls || '';
+function ui(title, cls, detail) {
+  var b = document.getElementById('box');
+  b.className = cls || '';
+  b.innerHTML = '<div class="bt">' + (title||'') + '</div>' + (detail ? '<div class="bd">' + esc(detail) + '</div>' : '');
+}
+function uiHtml(titleHtml, cls, detailHtml) {
+  var b = document.getElementById('box');
+  b.className = cls || '';
+  b.innerHTML = '<div class="bt">' + titleHtml + '</div>' + (detailHtml ? '<div class="bd">' + detailHtml + '</div>' : '');
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-if (Office.onReady) {
-  Office.onReady(function() {
-    setStatus('Ready! Click "Track This Email" before sending.', '');
-  });
-} else {
-  Office.initialize = function() {
-    setStatus('Ready! Click "Track This Email" before sending.', '');
-  };
+// Init
+(function() {
+  if (Office.onReady) {
+    Office.onReady(function() { ready(); });
+  } else {
+    Office.initialize = function() { ready(); };
+  }
+})();
+
+function ready() {
+  ui('Ready. Click "Track This Email" before sending.', '');
+  document.getElementById('btnTrack').disabled  = false;
+  document.getElementById('btnRemove').disabled = false;
+  document.getElementById('btnCheck').disabled  = false;
 }
 
 function genId() {
-  return 'trk' + Date.now() + Math.random().toString(36).substr(2, 6);
+  return 'et' + Date.now().toString(36) + Math.random().toString(36).substr(2,4);
 }
 
-function buildPixelHtml(id) {
-  // ── FIX 1: NO display:none — hidden pixels are blocked by Gmail/Apple Mail.
-  // ── FIX 2: width/height 1px in attributes AND style — belt + suspenders.
-  // ── FIX 3: elementToProof wrapper — Outlook doesn't strip this during send.
-  // ── FIX 4: Unique HTML comment markers for reliable find/remove.
-  return MARKER_START +
-    '<div class="elementToProof" style="line-height:0;font-size:0;overflow:hidden;max-height:1px">' +
-    '<img src="' + SERVER + '/pixel/' + id + '"' +
-    ' width="1" height="1"' +
-    ' style="width:1px;height:1px;border:0;margin:0;padding:0;opacity:0"' +
-    ' alt=""' +
-    '/>' +
+// Pixel HTML. Rules:
+//  - elementToProof wrapper: Outlook won't strip it during send
+//  - NO display:none: clients skip loading hidden images
+//  - Both attribute and style width/height=1
+//  - .gif extension on URL: some clients only proxy known image types
+//  - Comment markers: for precise removal later
+function buildPixel(id) {
+  return MA +
+    '<div class="elementToProof" style="overflow:hidden;height:1px;max-height:1px;line-height:0;font-size:0">' +
+    '<img src="' + SERVER + '/pixel/' + id + '.gif"' +
+    ' width="1" height="1" style="width:1px;height:1px;border:0;outline:0;margin:0;padding:0"' +
+    ' alt=""/>' +
     '</div>' +
-    MARKER_END;
+    MB;
 }
 
 function addTracking() {
-  try {
-    // If already tracked in this session, warn user
-    if (tId) {
-      setStatus('Already tracked! Remove first if you want to reset.', 'red');
+  if (trackId) { ui('Already tracking. Remove first to reset.', 'amber'); return; }
+
+  uiHtml('<span class="spin"></span> Reading email…', '');
+  document.getElementById('btnTrack').disabled = true;
+
+  var item = Office.context.mailbox.item;
+  var newId = genId();
+
+  item.subject.getAsync(function(sr) {
+    var subj = (sr.status === Office.AsyncResultStatus.Succeeded && sr.value) ? sr.value : '(No Subject)';
+    item.to.getAsync(function(tr) {
+      var to = 'Unknown';
+      if (tr.status === Office.AsyncResultStatus.Succeeded && tr.value && tr.value.length) {
+        to = tr.value.map(function(r){ return r.emailAddress; }).join(', ');
+      }
+
+      // Register — server records our IP so it can exclude it from pixel hits
+      fetch(SERVER + '/register?id=' + encodeURIComponent(newId)
+            + '&subject=' + encodeURIComponent(subj)
+            + '&to=' + encodeURIComponent(to))
+        .catch(function(){})
+        .then(function() {
+          injectPixel(item, newId, subj, to);
+        });
+    });
+  });
+}
+
+function injectPixel(item, id, subj, to) {
+  var pixel = buildPixel(id);
+  item.body.getAsync(Office.CoercionType.Html, function(br) {
+    if (br.status !== Office.AsyncResultStatus.Succeeded) {
+      ui('Failed to read email body.', 'red', br.error ? br.error.message : '');
+      document.getElementById('btnTrack').disabled = false;
       return;
     }
 
-    var item = Office.context.mailbox.item;
-    var newId = genId();
+    var body = br.value || '';
+    var newBody;
 
-    item.subject.getAsync(function(subjResult) {
-      var subj = (subjResult.status === Office.AsyncResultStatus.Succeeded && subjResult.value)
-        ? subjResult.value : 'No Subject';
+    // Insert just before </body> — safest position across all clients
+    if (/<\/body>/i.test(body)) {
+      newBody = body.replace(/<\/body>/i, pixel + '</body>');
+    } else {
+      newBody = body + pixel;
+    }
 
-      item.to.getAsync(function(toResult) {
-        var to = 'Unknown';
-        if (toResult.status === Office.AsyncResultStatus.Succeeded && toResult.value && toResult.value.length > 0) {
-          to = toResult.value.map(function(x) { return x.emailAddress; }).join(', ');
-        }
-
-        // Register with server BEFORE injecting pixel
-        fetch(SERVER + '/register?id=' + encodeURIComponent(newId) +
-          '&subject=' + encodeURIComponent(subj) +
-          '&to=' + encodeURIComponent(to))
-          .catch(function() {});
-
-        var pixel = buildPixelHtml(newId);
-
-        item.body.getAsync(Office.CoercionType.Html, function(br) {
-          if (br.status !== Office.AsyncResultStatus.Succeeded) {
-            setStatus('Error reading body: ' + br.error.message, 'red');
-            return;
-          }
-
-          var body = br.value;
-
-          // ── FIX 5: Don't insert at <body> start — insert just before </body>
-          // This avoids Gmail clipping AND Outlook preview issues.
-          var newBody;
-          if (body.toLowerCase().indexOf('</body>') !== -1) {
-            newBody = body.replace(/<\/body>/i, pixel + '</body>');
-          } else {
-            newBody = body + pixel;
-          }
-
-          item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(sr) {
-            if (sr.status === Office.AsyncResultStatus.Succeeded) {
-              tId = newId;
-              setStatus('✅ Tracking ON!\nTo: ' + to + '\nID: ' + newId, 'green');
-            } else {
-              setStatus('Error injecting pixel: ' + sr.error.message, 'red');
-            }
-          });
-        });
-      });
+    item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(wr) {
+      if (wr.status !== Office.AsyncResultStatus.Succeeded) {
+        ui('Failed to insert pixel.', 'red', wr.error ? wr.error.message : '');
+        document.getElementById('btnTrack').disabled = false;
+        return;
+      }
+      trackId = id;
+      uiHtml('✅ Tracking ON', 'green', esc('To: ' + to + '\nSubject: ' + subj));
+      startPoll(id);
     });
-
-  } catch(e) {
-    setStatus('Error: ' + e.message, 'red');
-  }
+  });
 }
 
 function removeTracking() {
-  if (!tId) {
-    setStatus('No active tracking to remove.', '');
-    return;
-  }
+  if (!trackId) { ui('Nothing to remove.', ''); return; }
+  stopPoll();
   var item = Office.context.mailbox.item;
   item.body.getAsync(Office.CoercionType.Html, function(r) {
-    if (r.status !== Office.AsyncResultStatus.Succeeded) {
-      setStatus('Error reading body for removal.', 'red');
-      return;
-    }
-
-    // ── FIX 6: Use comment markers for precise removal — doesn't touch other elementToProof divs
-    var body = r.value;
-    var startIdx = body.indexOf(MARKER_START);
-    var endIdx   = body.indexOf(MARKER_END);
-
-    if (startIdx === -1 || endIdx === -1) {
-      setStatus('Pixel not found in body (may have already been removed).', '');
-      tId = null;
-      return;
-    }
-
-    var clean = body.substring(0, startIdx) + body.substring(endIdx + MARKER_END.length);
-
-    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function(sr) {
-      if (sr.status === Office.AsyncResultStatus.Succeeded) {
-        tId = null;
-        setStatus('Tracking removed.', '');
+    if (r.status !== Office.AsyncResultStatus.Succeeded) { ui('Failed to read body.', 'red'); return; }
+    var body = r.value || '';
+    var a = body.indexOf(MA), b = body.indexOf(MB);
+    if (a === -1 || b === -1) { ui('Pixel not found (already sent?).', 'amber'); trackId = null; return; }
+    var clean = body.substring(0, a) + body.substring(b + MB.length);
+    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function(wr) {
+      if (wr.status === Office.AsyncResultStatus.Succeeded) {
+        trackId = null;
+        ui('Tracking removed.', '');
+        document.getElementById('btnTrack').disabled = false;
       } else {
-        setStatus('Error removing pixel: ' + sr.error.message, 'red');
+        ui('Removal failed.', 'red', wr.error ? wr.error.message : '');
       }
     });
   });
+}
+
+function checkStatus() {
+  if (!trackId) { ui('No active tracking. Track an email first.', 'amber'); return; }
+  fetchStatus(trackId);
+}
+
+function fetchStatus(id) {
+  fetch(SERVER + '/status/' + encodeURIComponent(id))
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (!d.found) { ui('Email not found on server.', 'amber', 'Server may have restarted.'); return; }
+      if (d.openCount > 0) {
+        var last = d.opens[d.opens.length-1];
+        uiHtml(
+          '✅ Opened <span class="obadge">' + d.openCount + '×</span>',
+          'green',
+          esc('Last: ' + last.time + ' · ' + last.device + ' · ' + last.client)
+        );
+      } else {
+        ui('❌ Not opened yet', 'amber', 'To: ' + (d.to||''));
+      }
+    })
+    .catch(function() { ui('Server unreachable.', 'red'); });
+}
+
+function startPoll(id) {
+  stopPoll();
+  pollTimer = setInterval(function() {
+    if (trackId === id) fetchStatus(id); else stopPoll();
+  }, 30000);
+}
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 </script>
 </body>
