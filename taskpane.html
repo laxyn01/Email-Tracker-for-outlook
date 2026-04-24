@@ -13,7 +13,7 @@
       background: #fff; border: 1px solid #dde0ff;
       border-radius: 8px; padding: 11px;
       font-size: 13px; color: #444;
-      margin-bottom: 12px; min-height: 44px;
+      margin-bottom: 12px; min-height: 44px; line-height: 1.5;
     }
     .green { background: #f0fdf4 !important; border-color: #22c55e !important; color: #166534 !important; }
     .red   { background: #fef2f2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
@@ -33,7 +33,9 @@
   <div id="status">Initializing...</div>
   <button id="btnTrack"  onclick="addTracking()">🔍 Track This Email</button>
   <button id="btnRemove" onclick="removeTracking()">✖ Remove Tracking</button>
-  <div id="dash"><a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">📊 Open Dashboard</a></div>
+  <div id="dash">
+    <a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">📊 Open Dashboard</a>
+  </div>
 
 <script>
 var SERVER = 'https://email-tracker-outlook.onrender.com';
@@ -45,9 +47,8 @@ function setStatus(msg, cls) {
   el.className = cls || '';
 }
 
-// Support both old and new Office.js initialization
 if (Office.onReady) {
-  Office.onReady(function(info) {
+  Office.onReady(function() {
     setStatus('Ready! Track dabao before sending.', '');
   });
 } else {
@@ -64,36 +65,42 @@ function addTracking() {
   try {
     var item = Office.context.mailbox.item;
     tId = genId();
-    var subj = item.subject || 'No Subject';
 
-    item.to.getAsync(function(r) {
-      var to = 'Unknown';
-      if (r.status === Office.AsyncResultStatus.Succeeded && r.value.length > 0) {
-        to = r.value.map(function(x){ return x.emailAddress; }).join(', ');
-      }
+    // ✅ FIX: subject.getAsync() — proper async call
+    item.subject.getAsync(function(subjResult) {
+      var subj = (subjResult.status === Office.AsyncResultStatus.Succeeded && subjResult.value)
+        ? subjResult.value : 'No Subject';
 
-      // Register
-      var img = new Image();
-      img.src = SERVER + '/register?id=' + tId +
-        '&subject=' + encodeURIComponent(subj) +
-        '&to=' + encodeURIComponent(to);
-
-      var pixel = '<img src="' + SERVER + '/pixel/' + tId +
-        '" width="1" height="1" style="display:none" alt=""/>';
-
-      item.body.getAsync(Office.CoercionType.Html, function(br) {
-        if (br.status !== Office.AsyncResultStatus.Succeeded) {
-          setStatus('Error reading body: ' + br.error.message, 'red'); return;
+      item.to.getAsync(function(toResult) {
+        var to = 'Unknown';
+        if (toResult.status === Office.AsyncResultStatus.Succeeded && toResult.value.length > 0) {
+          to = toResult.value.map(function(x){ return x.emailAddress; }).join(', ');
         }
-        item.body.setAsync(br.value + pixel, { coercionType: Office.CoercionType.Html }, function(sr) {
-          if (sr.status === Office.AsyncResultStatus.Succeeded) {
-            setStatus('✅ Tracking ON!\nTo: ' + to, 'green');
-          } else {
-            setStatus('Set error: ' + sr.error.message, 'red');
+
+        // Register with server
+        fetch(SERVER + '/register?id=' + tId +
+          '&subject=' + encodeURIComponent(subj) +
+          '&to=' + encodeURIComponent(to)).catch(function(){});
+
+        // Build pixel
+        var pixel = '<img src="' + SERVER + '/pixel/' + tId +
+          '" width="1" height="1" style="display:none" alt=""/>';
+
+        item.body.getAsync(Office.CoercionType.Html, function(br) {
+          if (br.status !== Office.AsyncResultStatus.Succeeded) {
+            setStatus('Error: ' + br.error.message, 'red'); return;
           }
+          item.body.setAsync(br.value + pixel, { coercionType: Office.CoercionType.Html }, function(sr) {
+            if (sr.status === Office.AsyncResultStatus.Succeeded) {
+              setStatus('✅ Tracking ON!\nTo: ' + to + '\nSubject: ' + subj, 'green');
+            } else {
+              setStatus('Error: ' + sr.error.message, 'red');
+            }
+          });
         });
       });
     });
+
   } catch(e) {
     setStatus('Error: ' + e.message, 'red');
   }
