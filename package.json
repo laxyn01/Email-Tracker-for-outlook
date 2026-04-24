@@ -1,7 +1,7 @@
 {
   "name": "email-tracker-server",
-  "version": "1.0.0",
-  "description": "Custom Email Tracker Server",
+  "version": "5.0.0",
+  "description": "Email Tracker Server for Outlook Desktop Add-in",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
