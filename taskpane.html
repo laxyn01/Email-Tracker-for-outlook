@@ -7,91 +7,143 @@
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f7ff; padding: 16px; font-size: 13px; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f0f2ff;
+      padding: 16px;
+      font-size: 13px;
+      min-height: 100vh;
+    }
 
-    .logo { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-    .logo span:first-child { font-size: 20px; }
-    .logo span:last-child  { font-size: 15px; font-weight: 700; color: #5046e4; }
+    .logo {
+      display: flex; align-items: center; gap: 9px;
+      margin-bottom: 16px; padding-bottom: 14px;
+      border-bottom: 1px solid #e0e3ff;
+    }
+    .logo-icon { font-size: 22px; }
+    .logo-text { font-size: 15px; font-weight: 700; color: #4338ca; letter-spacing: -.3px; }
+    .logo-ver  { font-size: 10px; color: #a5b4fc; font-weight: 500; margin-left: auto; }
 
     #box {
-      border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
-      line-height: 1.55; background: #fff; border: 1.5px solid #dde1ff;
-      color: #444; min-height: 52px;
+      border-radius: 10px; padding: 13px 15px; margin-bottom: 13px;
+      line-height: 1.6; background: #fff;
+      border: 1.5px solid #dde1ff; color: #444;
+      min-height: 54px; transition: background .2s, border-color .2s;
     }
     #box.green  { background: #f0fdf4; border-color: #4ade80; color: #14532d; }
     #box.red    { background: #fff1f2; border-color: #f87171; color: #7f1d1d; }
     #box.amber  { background: #fffbeb; border-color: #fbbf24; color: #78350f; }
-    .bt  { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
-    .bd  { font-size: 12px; opacity: .85; white-space: pre-line; }
-    .obadge { display: inline-block; background: #4ade80; color: #14532d;
-              border-radius: 20px; padding: 1px 9px; font-weight: 700; font-size: 12px; margin-left: 4px; }
+
+    .bt { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+    .bd { font-size: 11.5px; opacity: .85; white-space: pre-line; }
+    .obadge {
+      display: inline-block; background: #4ade80; color: #14532d;
+      border-radius: 20px; padding: 1px 9px;
+      font-weight: 700; font-size: 11px; margin-left: 4px;
+    }
+
+    .btn-group { display: flex; flex-direction: column; gap: 8px; }
 
     button {
-      width: 100%; padding: 11px; border: none; border-radius: 9px;
-      font-size: 13px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
+      width: 100%; padding: 11px 14px; border: none; border-radius: 9px;
+      font-size: 12.5px; font-weight: 700; cursor: pointer;
+      transition: opacity .15s, transform .1s;
     }
-    button:active  { opacity: .8; }
-    button:disabled { opacity: .4; cursor: default; }
-    #btnTrack  { background: linear-gradient(135deg,#667eea,#764ba2); color: #fff; }
-    #btnRemove { background: #fee2e2; color: #991b1b; }
-    #btnCheck  { background: #f3f4f6; color: #555; }
+    button:active  { opacity: .8; transform: scale(.98); }
+    button:disabled { opacity: .35; cursor: default; }
 
-    hr { border: none; border-top: 1px solid #e8eaff; margin: 8px 0 10px; }
-    .foot { text-align: center; }
-    .foot a { color: #667eea; font-size: 12px; text-decoration: none; }
+    #btnTrack  { background: linear-gradient(135deg,#4f46e5,#7c3aed); color: #fff; }
+    #btnRemove { background: #fee2e2; color: #991b1b; }
+
+    .divider { border: none; border-top: 1px solid #e8eaff; margin: 10px 0; }
+
+    #btnCheck  { background: #f3f4f6; color: #374151; }
+
+    .foot { text-align: center; margin-top: 14px; }
+    .foot a {
+      color: #4f46e5; font-size: 11.5px; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
     .foot a:hover { text-decoration: underline; }
 
-    .spin { display:inline-block; width:12px; height:12px; border:2px solid rgba(255,255,255,.3);
-            border-top-color:#fff; border-radius:50%; animation:sp .6s linear infinite;
-            vertical-align:middle; margin-right:5px; }
-    @keyframes sp { to { transform:rotate(360deg); } }
+    .spin {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color: #fff;
+      border-radius: 50%; animation: sp .6s linear infinite;
+      vertical-align: middle; margin-right: 5px;
+    }
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    .tag {
+      display: inline-block; padding: 2px 8px; border-radius: 12px;
+      font-size: 10px; font-weight: 600; margin-top: 4px;
+      background: #ede9fe; color: #5b21b6;
+    }
   </style>
 </head>
 <body>
 
-<div class="logo"><span>📧</span><span>Email Tracker</span></div>
+<div class="logo">
+  <span class="logo-icon">📧</span>
+  <span class="logo-text">Email Tracker</span>
+  <span class="logo-ver">v5</span>
+</div>
 
 <div id="box"><div class="bt">Initializing…</div></div>
 
-<button id="btnTrack"  onclick="addTracking()"   disabled>🔍 Track This Email</button>
-<button id="btnRemove" onclick="removeTracking()" disabled>✖ Remove Tracking</button>
+<div class="btn-group">
+  <button id="btnTrack"  onclick="addTracking()"   disabled>🔍 Track This Email</button>
+  <button id="btnRemove" onclick="removeTracking()" disabled>✖ Remove Tracking</button>
+</div>
 
-<hr>
+<hr class="divider">
 
-<button id="btnCheck"  onclick="checkStatus()"   disabled>🔄 Check Open Status</button>
+<button id="btnCheck" onclick="checkStatus()" disabled>🔄 Check Open Status</button>
 
-<div class="foot" style="margin-top:10px">
+<div class="foot">
   <a href="https://email-tracker-outlook.onrender.com/dashboard" target="_blank">📊 Open Dashboard →</a>
 </div>
 
 <script>
+// ─── Config ───────────────────────────────────────────────────────────────────
 var SERVER = 'https://email-tracker-outlook.onrender.com';
-var MA = '<!--ET-S-->';
-var MB = '<!--ET-E-->';
 
-var trackId  = null;
+// Markers used to find & remove the pixel from the body HTML
+// Must be unique strings that Outlook won't strip
+var MARKER_START = '<!--ETSTART-->';
+var MARKER_END   = '<!--ETEND-->';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+var trackId   = null;
 var pollTimer = null;
 
+// ─── UI helpers ───────────────────────────────────────────────────────────────
 function ui(title, cls, detail) {
   var b = document.getElementById('box');
   b.className = cls || '';
-  b.innerHTML = '<div class="bt">' + (title||'') + '</div>' + (detail ? '<div class="bd">' + esc(detail) + '</div>' : '');
+  b.innerHTML =
+    '<div class="bt">' + (title || '') + '</div>' +
+    (detail ? '<div class="bd">' + esc(detail) + '</div>' : '');
 }
 function uiHtml(titleHtml, cls, detailHtml) {
   var b = document.getElementById('box');
   b.className = cls || '';
-  b.innerHTML = '<div class="bt">' + titleHtml + '</div>' + (detailHtml ? '<div class="bd">' + detailHtml + '</div>' : '');
+  b.innerHTML =
+    '<div class="bt">' + titleHtml + '</div>' +
+    (detailHtml ? '<div class="bd">' + detailHtml + '</div>' : '');
 }
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Init
-(function() {
+// ─── Office init ──────────────────────────────────────────────────────────────
+(function () {
   if (Office.onReady) {
-    Office.onReady(function() { ready(); });
+    Office.onReady(function () { ready(); });
   } else {
-    Office.initialize = function() { ready(); };
+    Office.initialize = function () { ready(); };
   }
 })();
 
@@ -102,58 +154,98 @@ function ready() {
   document.getElementById('btnCheck').disabled  = false;
 }
 
+// ─── ID generation ────────────────────────────────────────────────────────────
 function genId() {
-  return 'et' + Date.now().toString(36) + Math.random().toString(36).substr(2,4);
+  return 'et' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
-// Pixel HTML. Rules:
-//  - elementToProof wrapper: Outlook won't strip it during send
-//  - NO display:none: clients skip loading hidden images
-//  - Both attribute and style width/height=1
-//  - .gif extension on URL: some clients only proxy known image types
-//  - Comment markers: for precise removal later
+// ─── Pixel HTML ───────────────────────────────────────────────────────────────
+// Rules for surviving Outlook send:
+//  • elementToProof wrapper: prevents Outlook from stripping the div on send
+//  • overflow:hidden + height:1px: visually invisible but NOT display:none
+//    (display:none causes many clients to skip loading the image entirely)
+//  • Both HTML attributes AND inline style dimensions: belt-and-suspenders
+//  • .gif extension: some clients only proxy/load known image extensions
+//  • Pixel is placed BEFORE </body>, not at the top, so it doesn't
+//    affect "above the fold" rendering in the recipient's preview pane
 function buildPixel(id) {
-  return MA +
-    '<div class="elementToProof" style="overflow:hidden;height:1px;max-height:1px;line-height:0;font-size:0">' +
+  return MARKER_START +
+    '<div class="elementToProof" style="overflow:hidden;height:1px;max-height:1px;line-height:0;font-size:0;mso-hide:none">' +
     '<img src="' + SERVER + '/pixel/' + id + '.gif"' +
-    ' width="1" height="1" style="width:1px;height:1px;border:0;outline:0;margin:0;padding:0"' +
-    ' alt=""/>' +
+    ' width="1" height="1"' +
+    ' style="width:1px;height:1px;display:block;border:0;outline:0;margin:0;padding:0"' +
+    ' alt=""' +
+    ' />' +
     '</div>' +
-    MB;
+    MARKER_END;
 }
 
+// ─── addTracking ──────────────────────────────────────────────────────────────
 function addTracking() {
-  if (trackId) { ui('Already tracking. Remove first to reset.', 'amber'); return; }
+  if (trackId) {
+    ui('Already tracking this email. Remove first to reset.', 'amber');
+    return;
+  }
 
   uiHtml('<span class="spin"></span> Reading email…', '');
   document.getElementById('btnTrack').disabled = true;
 
-  var item = Office.context.mailbox.item;
+  var item  = Office.context.mailbox.item;
   var newId = genId();
 
-  item.subject.getAsync(function(sr) {
-    var subj = (sr.status === Office.AsyncResultStatus.Succeeded && sr.value) ? sr.value : '(No Subject)';
-    item.to.getAsync(function(tr) {
-      var to = 'Unknown';
-      if (tr.status === Office.AsyncResultStatus.Succeeded && tr.value && tr.value.length) {
-        to = tr.value.map(function(r){ return r.emailAddress; }).join(', ');
-      }
+  // Read subject first, then recipients
+  // FIX: Use a retry loop for item.to.getAsync — recipients may not be resolved
+  // immediately if the compose window just opened.
+  item.subject.getAsync(function (sr) {
+    var subj = (sr.status === Office.AsyncResultStatus.Succeeded && sr.value)
+      ? sr.value : '(No Subject)';
 
-      // Register — server records our IP so it can exclude it from pixel hits
-      fetch(SERVER + '/register?id=' + encodeURIComponent(newId)
-            + '&subject=' + encodeURIComponent(subj)
-            + '&to=' + encodeURIComponent(to))
-        .catch(function(){})
-        .then(function() {
-          injectPixel(item, newId, subj, to);
-        });
+    getRecipientsWithRetry(item, 0, function(to) {
+      // Register on server — this also sets the sentTimestamp for the grace window
+      fetch(
+        SERVER + '/register' +
+        '?id='      + encodeURIComponent(newId) +
+        '&subject=' + encodeURIComponent(subj)  +
+        '&to='      + encodeURIComponent(to)
+      )
+      .then(function () {
+        injectPixel(item, newId, subj, to);
+      })
+      .catch(function (err) {
+        // Even if register fails (Render cold start), inject pixel anyway
+        // The server will create a partial record when the pixel fires
+        console.warn('Register failed:', err);
+        injectPixel(item, newId, subj, to);
+      });
     });
   });
 }
 
+// Retry getAsync for recipients up to 3 times with 800ms delay
+// Fixes the '?' / 'Unknown' recipient bug
+function getRecipientsWithRetry(item, attempt, callback) {
+  item.to.getAsync(function (tr) {
+    if (tr.status === Office.AsyncResultStatus.Succeeded &&
+        tr.value && tr.value.length > 0) {
+      var to = tr.value.map(function (r) { return r.emailAddress; }).join(', ');
+      callback(to);
+    } else if (attempt < 3) {
+      // Compose window hasn't resolved recipients yet — wait and retry
+      setTimeout(function () {
+        getRecipientsWithRetry(item, attempt + 1, callback);
+      }, 800);
+    } else {
+      // Give up after 3 retries — use placeholder
+      callback('Unknown');
+    }
+  });
+}
+
+// ─── injectPixel ─────────────────────────────────────────────────────────────
 function injectPixel(item, id, subj, to) {
   var pixel = buildPixel(id);
-  item.body.getAsync(Office.CoercionType.Html, function(br) {
+
+  item.body.getAsync(Office.CoercionType.Html, function (br) {
     if (br.status !== Office.AsyncResultStatus.Succeeded) {
       ui('Failed to read email body.', 'red', br.error ? br.error.message : '');
       document.getElementById('btnTrack').disabled = false;
@@ -161,42 +253,61 @@ function injectPixel(item, id, subj, to) {
     }
 
     var body = br.value || '';
-    var newBody;
 
-    // Insert just before </body> — safest position across all clients
-    if (/<\/body>/i.test(body)) {
-      newBody = body.replace(/<\/body>/i, pixel + '</body>');
-    } else {
-      newBody = body + pixel;
-    }
+    // Insert pixel just before </body> for best compatibility
+    // If no </body> tag, append to end
+    var newBody = /<\/body>/i.test(body)
+      ? body.replace(/<\/body>/i, pixel + '</body>')
+      : body + pixel;
 
-    item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function(wr) {
+    item.body.setAsync(newBody, { coercionType: Office.CoercionType.Html }, function (wr) {
       if (wr.status !== Office.AsyncResultStatus.Succeeded) {
-        ui('Failed to insert pixel.', 'red', wr.error ? wr.error.message : '');
+        ui('Failed to insert tracking pixel.', 'red', wr.error ? wr.error.message : '');
         document.getElementById('btnTrack').disabled = false;
         return;
       }
+
       trackId = id;
-      uiHtml('✅ Tracking ON', 'green', esc('To: ' + to + '\nSubject: ' + subj));
+      uiHtml(
+        '✅ Tracking ON',
+        'green',
+        esc('To: ' + to + '\nSubject: ' + subj)
+      );
       startPoll(id);
     });
   });
 }
 
+// ─── removeTracking ───────────────────────────────────────────────────────────
 function removeTracking() {
   if (!trackId) { ui('Nothing to remove.', ''); return; }
+
   stopPoll();
   var item = Office.context.mailbox.item;
-  item.body.getAsync(Office.CoercionType.Html, function(r) {
-    if (r.status !== Office.AsyncResultStatus.Succeeded) { ui('Failed to read body.', 'red'); return; }
+
+  item.body.getAsync(Office.CoercionType.Html, function (r) {
+    if (r.status !== Office.AsyncResultStatus.Succeeded) {
+      ui('Failed to read body.', 'red');
+      return;
+    }
+
     var body = r.value || '';
-    var a = body.indexOf(MA), b = body.indexOf(MB);
-    if (a === -1 || b === -1) { ui('Pixel not found (already sent?).', 'amber'); trackId = null; return; }
-    var clean = body.substring(0, a) + body.substring(b + MB.length);
-    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function(wr) {
+    var a = body.indexOf(MARKER_START);
+    var b = body.indexOf(MARKER_END);
+
+    if (a === -1 || b === -1) {
+      // Pixel not found — already sent or wasn't injected
+      ui('Pixel not found. Email may have already been sent.', 'amber');
+      trackId = null;
+      return;
+    }
+
+    var clean = body.substring(0, a) + body.substring(b + MARKER_END.length);
+
+    item.body.setAsync(clean, { coercionType: Office.CoercionType.Html }, function (wr) {
       if (wr.status === Office.AsyncResultStatus.Succeeded) {
         trackId = null;
-        ui('Tracking removed.', '');
+        ui('Tracking removed. Email is clean.', '');
         document.getElementById('btnTrack').disabled = false;
       } else {
         ui('Removal failed.', 'red', wr.error ? wr.error.message : '');
@@ -205,34 +316,52 @@ function removeTracking() {
   });
 }
 
+// ─── checkStatus ─────────────────────────────────────────────────────────────
 function checkStatus() {
-  if (!trackId) { ui('No active tracking. Track an email first.', 'amber'); return; }
+  if (!trackId) {
+    ui('No active tracking ID. Track an email first.', 'amber');
+    return;
+  }
   fetchStatus(trackId);
 }
 
+// ─── fetchStatus ─────────────────────────────────────────────────────────────
 function fetchStatus(id) {
   fetch(SERVER + '/status/' + encodeURIComponent(id))
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
-      if (!d.found) { ui('Email not found on server.', 'amber', 'Server may have restarted.'); return; }
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.found) {
+        ui('Email not found on server.', 'amber', 'Server may have restarted. Send the email to activate tracking.');
+        return;
+      }
       if (d.openCount > 0) {
-        var last = d.opens[d.opens.length-1];
+        var last = d.opens[d.opens.length - 1];
         uiHtml(
           '✅ Opened <span class="obadge">' + d.openCount + '×</span>',
           'green',
-          esc('Last: ' + last.time + ' · ' + last.device + ' · ' + last.client)
+          esc('Last: ' + last.time + '\nDevice: ' + last.device + ' · ' + last.client)
         );
       } else {
-        ui('❌ Not opened yet', 'amber', 'To: ' + (d.to||''));
+        ui(
+          '❌ Not opened yet',
+          'amber',
+          'To: ' + esc(d.to || '') + '\n' +
+          (d.ignored > 0 ? d.ignored + ' bot/proxy hits filtered' : 'Waiting for recipient to open…')
+        );
       }
     })
-    .catch(function() { ui('Server unreachable.', 'red'); });
+    .catch(function () {
+      ui('Cannot reach server.', 'red', 'Check your internet connection.');
+    });
 }
 
+// ─── Polling ─────────────────────────────────────────────────────────────────
 function startPoll(id) {
   stopPoll();
-  pollTimer = setInterval(function() {
-    if (trackId === id) fetchStatus(id); else stopPoll();
+  // Poll every 30 seconds
+  pollTimer = setInterval(function () {
+    if (trackId === id) fetchStatus(id);
+    else stopPoll();
   }, 30000);
 }
 function stopPoll() {
