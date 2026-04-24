@@ -1,13 +1,24 @@
 /**
- * Email Tracker Server v3 — Outlook Desktop Edition
+ * Email Tracker Server v5 — REBUILT FROM SCRATCH
  *
- * Core problem solved:
- * Outlook desktop's reading pane fires the pixel from the SENDER's machine
- * the moment they click the sent email. We fix this by:
- *   1. Recording the sender's public IP at /register time
- *   2. Ignoring ALL pixel hits from that same IP
- *   3. Filtering all known bot/proxy UAs
- *   4. Deduplicating same-IP hits within 2 minutes
+ * WHAT WAS BROKEN IN v3/v4:
+ *
+ * 1. 'googleimageproxy' was in BOT_UA list — WRONG.
+ *    Gmail proxies ALL images through googleimageproxy on behalf of the RECIPIENT.
+ *    Blocking it means you block every Gmail open. It MUST be counted as a real open.
+ *
+ * 2. senderIP filter blocked everything on Render.com.
+ *    Render sits behind a shared reverse proxy — every request (including /register)
+ *    arrives from the SAME proxy IP. So senderIP === every pixel hit IP === everything blocked.
+ *    Fix: TIME-BASED GRACE WINDOW. Outlook Desktop fires within 3-5s of send/preview.
+ *    We ignore all hits within the first 10s of registration — catches Outlook auto-preview
+ *    without blocking real recipients (nobody opens an email within 10s of it being sent).
+ *
+ * 3. '?' entries — item.to.getAsync() called before compose window resolved recipients.
+ *    Fix: retry loop with timeout in taskpane.
+ *
+ * 4. Dedup window 2 min was causing real opens to be skipped.
+ *    Fix: 30s dedup only — catches double-fires, not legitimate re-opens.
  */
 
 const express = require('express');
@@ -16,10 +27,13 @@ const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3000;
 
+// ── Persistence ───────────────────────────────────────────────────────────────
 const DATA_FILE = path.join(__dirname, 'email_logs.json');
 function loadLogs() {
-  try { if (fs.existsSync(DATA_FILE)) return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); }
-  catch(e) { console.error('Load error:', e.message); }
+  try {
+    if (fs.existsSync(DATA_FILE))
+      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch(e) { console.error('Load error:', e.message); }
   return {};
 }
 function saveLogs() {
@@ -27,36 +41,55 @@ function saveLogs() {
   catch(e) { console.error('Save error:', e.message); }
 }
 let emailLogs = loadLogs();
-console.log('Loaded ' + Object.keys(emailLogs).length + ' records.');
+console.log('[Boot] Loaded', Object.keys(emailLogs).length, 'records');
 
-const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+// ── Transparent 1x1 GIF ───────────────────────────────────────────────────────
+const PIXEL = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
 
+// ── CORS ──────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', '*');
   next();
 });
 
-const BOT_UA = [
-  'googleimageproxy','ggpht','googlebot',
-  'yahoo! slurp','bingbot','duckduckbot',
-  'facebookexternalhit','twitterbot','linkedinbot','slackbot',
-  'mimecast','proofpoint','barracuda','ironport','symantec','sophos',
-  'microsoft url defense','safelinks',
-  'preview','prefetch','headless','phantomjs','selenium',
+// ── UA Classification ─────────────────────────────────────────────────────────
+// googleimageproxy = Gmail's image proxy = recipient opened in Gmail. ALLOW IT.
+// Do NOT put it in BOT_SIGNATURES.
+const GMAIL_PROXY = ['googleimageproxy', 'ggpht', 'google image proxy'];
+
+// These are pure crawlers/scanners — block them
+const BOT_SIGNATURES = [
+  'googlebot', 'bingbot', 'yahoo! slurp', 'duckduckbot', 'yandexbot',
+  'baidu', 'sogou', 'exabot', 'ia_archiver',
+  'twitterbot', 'linkedinbot', 'slackbot', 'whatsapp', 'telegrambot',
+  'facebookexternalhit', 'discordbot',
+  'mimecast', 'proofpoint', 'barracuda', 'ironport', 'symantec', 'sophos',
+  'microsoft url defense', 'safelinks', 'messagelabs', 'forcepoint', 'trend micro',
+  'headlesschrome', 'phantomjs', 'selenium', 'puppeteer', 'playwright',
+  'python-requests', 'curl/', 'wget/',
+  'linkcheck', 'preview', 'prefetch',
 ];
-function isBot(ua) {
-  const u = (ua||'').toLowerCase();
-  return BOT_UA.some(b => u.includes(b));
+
+function classifyUA(ua) {
+  const u = (ua || '').toLowerCase();
+  if (GMAIL_PROXY.some(s => u.includes(s))) return 'gmail-proxy'; // real Gmail open
+  if (BOT_SIGNATURES.some(s => u.includes(s))) return 'bot';
+  return 'real';
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function getIP(req) {
   const fwd = req.headers['x-forwarded-for'];
   if (fwd) return fwd.split(',')[0].trim();
   return req.socket.remoteAddress || '';
 }
 
-function getDevice(ua) {
+function getDevice(ua, uaClass) {
+  if (uaClass === 'gmail-proxy') return 'Gmail Proxy';
   if (!ua) return 'Desktop';
   if (/iPhone/i.test(ua))    return 'iPhone';
   if (/Android/i.test(ua))   return 'Android';
@@ -66,48 +99,55 @@ function getDevice(ua) {
   return 'Desktop';
 }
 
-function getClient(ua) {
+function getClient(ua, uaClass) {
+  if (uaClass === 'gmail-proxy') return 'Gmail';
   if (!ua) return 'Unknown';
-  if (/GSA|Gmail/i.test(ua))               return 'Gmail';
-  if (/Outlook|microsoft office/i.test(ua)) return 'Outlook';
-  if (/Apple Mail/i.test(ua))               return 'Apple Mail';
-  if (/Thunderbird/i.test(ua))              return 'Thunderbird';
+  if (/GSA/i.test(ua) || /gmail/i.test(ua))     return 'Gmail App';
+  if (/Outlook|microsoft office/i.test(ua))      return 'Outlook';
+  if (/Apple Mail/i.test(ua))                    return 'Apple Mail';
+  if (/Thunderbird/i.test(ua))                   return 'Thunderbird';
+  if (/yahoo/i.test(ua))                         return 'Yahoo Mail';
   return 'Webmail/Other';
 }
 
 function nowIST() {
   return new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 }
+
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// REGISTER — records sender IP so we can exclude it from pixel hits
+// ── /ping — keeps Render free tier alive ──────────────────────────────────────
+app.get('/ping', (req, res) => res.json({ ok: true, time: nowIST() }));
+
+// ── /register ─────────────────────────────────────────────────────────────────
 app.get('/register', (req, res) => {
   const { id, subject, to } = req.query;
   if (!id) return res.status(400).json({ error: 'Missing id' });
-  const senderIP = getIP(req);
+
   emailLogs[id] = {
-    subject: subject || 'No Subject',
-    to: to || 'Unknown',
-    sentAt: nowIST(),
+    subject:       subject || 'No Subject',
+    to:            to || 'Unknown',
+    sentAt:        nowIST(),
     sentTimestamp: Date.now(),
-    senderIP: senderIP,
-    opens: [],
-    ignoredHits: [],
+    opens:         [],
+    ignored:       [],
   };
   saveLogs();
-  console.log('Registered [' + id + '] senderIP=' + senderIP + ' subject=' + subject);
-  res.json({ ok: true, senderIP: senderIP });
+  console.log('[Register]', id, '| to:', to, '| subject:', subject);
+  res.json({ ok: true });
 });
 
-// PIXEL — handles both /pixel/ID and /pixel/ID.gif
+// ── /pixel ────────────────────────────────────────────────────────────────────
 function handlePixel(req, res) {
   res.set({
-    'Content-Type': 'image/gif',
+    'Content-Type':  'image/gif',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0',
+    'Pragma':        'no-cache',
+    'Expires':       '0',
   });
   res.end(PIXEL);
 
@@ -118,119 +158,152 @@ function handlePixel(req, res) {
     const now = Date.now();
 
     if (!emailLogs[id]) {
-      emailLogs[id] = { subject:'?', to:'?', sentAt:'?', sentTimestamp:0, senderIP:'', opens:[], ignoredHits:[] };
+      emailLogs[id] = {
+        subject: 'Unknown (pre-restart)', to: 'Unknown',
+        sentAt: '?', sentTimestamp: 0, opens: [], ignored: [],
+      };
     }
     const rec = emailLogs[id];
-    if (!rec.ignoredHits) rec.ignoredHits = [];
+    if (!rec.ignored) rec.ignored = [];
 
     function ignore(reason) {
-      rec.ignoredHits.push({ time: nowIST(), ip, ua: ua.slice(0,120), reason });
+      rec.ignored.push({ time: nowIST(), ip, ua: ua.slice(0,120), reason });
       saveLogs();
-      console.log('IGNORED [' + id + '] reason=' + reason + ' ip=' + ip);
+      console.log('[Ignored]', id, reason, ip, ua.slice(0,60));
     }
 
-    // Rule 1: Known bot/proxy UA
-    if (isBot(ua)) return ignore('bot-ua');
+    const uaClass = classifyUA(ua);
 
-    // Rule 2: Sender's own IP — this is the main fix for Outlook desktop.
-    // Outlook reading pane loads images from sender's machine with sender's IP.
-    if (rec.senderIP && ip === rec.senderIP) return ignore('sender-ip');
+    // Block pure bots
+    if (uaClass === 'bot') return ignore('bot-ua');
 
-    // Rule 3: Dedup — same IP within 2 minutes
-    const isDup = rec.opens.some(o => o.ip === ip && (now - (o.ts||0)) < 120000);
-    if (isDup) return ignore('dedup-2min');
+    // TIME-BASED GRACE WINDOW (replaces broken senderIP filter)
+    // Outlook Desktop fires pixel within ~3s when sender views Sent folder.
+    // Ignore any hit in the first 10s after registration.
+    const age = now - (rec.sentTimestamp || 0);
+    if (age < 10000) return ignore('grace-window-10s');
+
+    // Dedup: same IP within 30s (catches accidental double-fire only)
+    const isDup = rec.opens.some(o => o.ip === ip && (now - (o.ts || 0)) < 30000);
+    if (isDup) return ignore('dedup-30s');
 
     // Real open
     const open = {
-      ts: now,
-      time: nowIST(),
-      device: getDevice(ua),
-      client: getClient(ua),
-      ip: ip,
+      ts:     now,
+      time:   nowIST(),
+      device: getDevice(ua, uaClass),
+      client: getClient(ua, uaClass),
+      ip,
       ua: ua.slice(0, 150),
     };
     rec.opens.push(open);
     saveLogs();
-    console.log('OPEN #' + rec.opens.length + ' [' + id + '] ' + rec.subject + ' | ' + open.device + ' | ' + ip);
+    console.log('[OPEN] #' + rec.opens.length, id, '|', rec.subject, '|', open.client, '| ip:', ip);
   });
 }
 
 app.get('/pixel/:id.gif', handlePixel);
 app.get('/pixel/:id',     handlePixel);
 
-// STATUS — polled by taskpane
+// ── /status/:id ───────────────────────────────────────────────────────────────
 app.get('/status/:id', (req, res) => {
   const r = emailLogs[req.params.id];
   if (!r) return res.json({ found: false });
-  res.json({ found: true, subject: r.subject, to: r.to, sentAt: r.sentAt, openCount: r.opens.length, opens: r.opens });
+  res.json({
+    found:     true,
+    subject:   r.subject,
+    to:        r.to,
+    sentAt:    r.sentAt,
+    openCount: r.opens.length,
+    opens:     r.opens,
+    ignored:   (r.ignored || []).length,
+  });
 });
 
-// DEBUG — shows ignored hits for diagnosing issues
+// ── /debug/:id ────────────────────────────────────────────────────────────────
 app.get('/debug/:id', (req, res) => {
   const r = emailLogs[req.params.id];
   if (!r) return res.json({ error: 'Not found' });
   res.json(r);
 });
 
-// DASHBOARD
+// ── /dashboard ────────────────────────────────────────────────────────────────
 app.get('/dashboard', (req, res) => {
-  const entries = Object.entries(emailLogs).sort((a,b) => (b[1].sentTimestamp||0) - (a[1].sentTimestamp||0));
-  const total = entries.length;
-  const opened = entries.filter(([,e]) => e.opens.length > 0).length;
-  const rate = total > 0 ? Math.round(opened/total*100) : 0;
+  const entries = Object.entries(emailLogs)
+    .sort((a, b) => (b[1].sentTimestamp || 0) - (a[1].sentTimestamp || 0));
+  const total  = entries.length;
+  const opened = entries.filter(([, e]) => e.opens.length > 0).length;
+  const rate   = total > 0 ? Math.round(opened / total * 100) : 0;
 
   const rows = !total
-    ? '<tr><td colspan="6" class="empty">No emails tracked yet. Open Outlook, compose, click Track.</td></tr>'
+    ? '<tr><td colspan="7" class="empty">No emails tracked yet. Open Outlook, compose, click Track.</td></tr>'
     : entries.map(([id, d]) => {
         const isOpened = d.opens.length > 0;
-        const last = isOpened ? d.opens[d.opens.length-1] : null;
-        const openRows = d.opens.map((o,i) =>
-          '<div class="orow"><span class="n">#'+(i+1)+'</span><span>'+esc(o.time)+'</span><span class="chip">'+esc(o.device)+'</span><span class="chip blue">'+esc(o.client)+'</span><span class="ip">'+esc(o.ip)+'</span></div>'
+        const last     = isOpened ? d.opens[d.opens.length - 1] : null;
+        const ignored  = (d.ignored || []).length;
+        const openRows = d.opens.map((o, i) =>
+          `<div class="orow">
+            <span class="n">#${i+1}</span>
+            <span>${esc(o.time)}</span>
+            <span class="chip">${esc(o.device)}</span>
+            <span class="chip blue">${esc(o.client)}</span>
+            <span class="ip">${esc(o.ip)}</span>
+          </div>`
         ).join('') || '<span class="dim">—</span>';
-        const ignored = (d.ignoredHits||[]).length;
-        return '<tr><td class="subj">'+esc(d.subject)+'</td><td class="sm">'+esc(d.to)+'</td><td class="sm grey">'+esc(d.sentAt)+'</td>'
-          +'<td><span class="badge '+(isOpened?'g':'r')+'">'+(isOpened?'✅ '+d.opens.length+'× opened':'❌ Not opened')+'</span>'
-          +(ignored?'<br><span class="dim">'+ignored+' hits filtered</span>':'')+'</td>'
-          +'<td class="sm">'+(last?esc(last.time):'—')+'</td>'
-          +'<td class="opens">'+openRows+'</td></tr>';
+        return `<tr>
+          <td class="subj">${esc(d.subject)}</td>
+          <td class="sm">${esc(d.to)}</td>
+          <td class="sm grey">${esc(d.sentAt)}</td>
+          <td>
+            <span class="badge ${isOpened ? 'g' : 'r'}">
+              ${isOpened ? '✅ ' + d.opens.length + 'x opened' : '❌ Not opened'}
+            </span>
+            ${ignored ? `<br><span class="dim">${ignored} hits filtered</span>` : ''}
+          </td>
+          <td class="sm">${last ? esc(last.time) : '—'}</td>
+          <td class="sm">${last ? esc(last.device) : '—'}</td>
+          <td class="opens">${openRows}</td>
+        </tr>`;
       }).join('');
 
   res.send(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="10">
+<meta http-equiv="refresh" content="15">
 <title>Email Tracker</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4ff;color:#222}
-.hdr{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:22px 30px;display:flex;justify-content:space-between;align-items:center}
-.hdr h1{font-size:19px;font-weight:700}.hdr p{font-size:12px;opacity:.75;margin-top:3px}
-.live{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 13px;font-size:12px;font-weight:700}
-.wrap{padding:24px 30px}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#eef1fb;color:#1a1a2e}
+.hdr{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:22px 32px;display:flex;justify-content:space-between;align-items:center}
+.hdr h1{font-size:18px;font-weight:700}.hdr p{font-size:11px;opacity:.7;margin-top:4px}
+.live{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;background:#4ade80;border-radius:50%;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.wrap{padding:24px 32px}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
-.stat{background:#fff;border-radius:12px;padding:16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.07)}
-.sn{font-size:34px;font-weight:800;color:#667eea}.sn.g{color:#22c55e}.sn.r{color:#ef4444}.sn.a{color:#f59e0b}
-.sl{font-size:12px;color:#999;margin-top:3px}
-.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.08)}
+.stat{background:#fff;border-radius:14px;padding:18px;text-align:center;box-shadow:0 2px 12px rgba(79,70,229,.08)}
+.sn{font-size:36px;font-weight:800;color:#4f46e5}.sn.g{color:#16a34a}.sn.r{color:#dc2626}.sn.a{color:#d97706}
+.sl{font-size:11px;color:#9ca3af;margin-top:4px;font-weight:500}
+.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 16px rgba(79,70,229,.1)}
 table{width:100%;border-collapse:collapse}
-thead tr{background:linear-gradient(135deg,#667eea,#764ba2)}
-th{color:#fff;padding:12px 15px;text-align:left;font-size:12px;font-weight:600}
-td{padding:11px 15px;border-bottom:1px solid #f3f3f8;vertical-align:top}
+thead tr{background:linear-gradient(135deg,#4f46e5,#7c3aed)}
+th{color:#fff;padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+td{padding:12px 16px;border-bottom:1px solid #f3f4f6;vertical-align:top;font-size:12px}
 tr:last-child td{border-bottom:none}tr:hover td{background:#fafbff}
-.subj{font-weight:600;font-size:13px}.sm{font-size:12px}.grey{color:#888}
-.empty{text-align:center;padding:40px;color:#aaa;font-size:14px}
-.badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap}
-.badge.g{background:#dcfce7;color:#14532d}.badge.r{background:#fee2e2;color:#991b1b}
-.opens{min-width:260px}
-.orow{display:flex;align-items:center;gap:7px;font-size:11px;margin-bottom:3px;flex-wrap:wrap}
-.n{background:#667eea;color:#fff;border-radius:10px;padding:0 7px;font-weight:700;font-size:10px}
-.chip{background:#f3f4f6;border-radius:5px;padding:1px 7px;font-size:11px}
-.blue{background:#ede9fe;color:#5b21b6}.ip{color:#bbb;font-family:monospace;font-size:10px}
-.dim{color:#bbb;font-size:11px}
+.subj{font-weight:600;font-size:13px;color:#1a1a2e}.sm{font-size:11px}.grey{color:#9ca3af}
+.empty{text-align:center;padding:50px;color:#9ca3af;font-size:13px}
+.badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge.g{background:#dcfce7;color:#15803d}.badge.r{background:#fee2e2;color:#b91c1c}
+.orow{display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:4px;flex-wrap:wrap}
+.n{background:#4f46e5;color:#fff;border-radius:10px;padding:1px 7px;font-weight:700;font-size:9px}
+.chip{background:#f3f4f6;border-radius:5px;padding:1px 7px;font-size:10px;color:#374151}
+.blue{background:#ede9fe;color:#6d28d9}.ip{color:#d1d5db;font-family:monospace;font-size:9px}
+.dim{color:#d1d5db;font-size:10px}
+.foot{text-align:center;padding:16px;color:#9ca3af;font-size:11px}
 </style></head><body>
 <div class="hdr">
-  <div><h1>📧 Email Tracker — Outlook Desktop</h1>
-  <p>Auto-refresh 10s · Sender IP filtered · Bots filtered · Persisted to disk</p></div>
-  <div class="live">🔴 LIVE</div>
+  <div><h1>📧 Email Tracker Dashboard</h1>
+  <p>Auto-refresh every 15s • Bots &amp; proxies filtered • Data persisted to disk</p></div>
+  <div class="live"><span class="dot"></span> Live</div>
 </div>
 <div class="wrap">
   <div class="stats">
@@ -240,12 +313,16 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#fafbff}
     <div class="stat"><div class="sn a">${rate}%</div><div class="sl">Open Rate</div></div>
   </div>
   <div class="card"><table>
-    <thead><tr><th>Subject</th><th>Sent To</th><th>Sent At</th><th>Status</th><th>Last Opened</th><th>Opens Detail</th></tr></thead>
+    <thead><tr>
+      <th>Subject</th><th>Sent To</th><th>Sent At</th>
+      <th>Status</th><th>Last Opened</th><th>Device</th><th>All Opens</th>
+    </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>
 </div>
+<div class="foot">Newest emails shown first. Data saved to disk — survives server restarts.</div>
 </body></html>`);
 });
 
-app.get('/', (req, res) => res.send('Email Tracker v3 running'));
-app.listen(PORT, () => console.log('Server on :' + PORT));
+app.get('/', (req, res) => res.send('Email Tracker v5 running. Go to /dashboard'));
+app.listen(PORT, () => console.log('[Server] Running on port', PORT));
