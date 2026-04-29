@@ -152,18 +152,19 @@ function esc(s) {
 // ── Auto-track toggle ─────────────────────────────────────────────────────────
 function onAutoToggleChange() {
   autoTrack = document.getElementById('autoToggle').checked;
-  // Save to sessionStorage so function-file.html can read it
   try { sessionStorage.setItem('et_auto', autoTrack ? '1' : '0'); } catch(e) {}
   var card = document.getElementById('autoCard');
   var sub  = document.getElementById('autoSub');
   if (autoTrack) {
     card.className = 'auto-card on';
     sub.textContent = 'On — every email tracked on send';
-    ui('✅ Auto-Track ON', 'green', 'Every email you send will be tracked automatically.\nNo need to click "Track This Email".');
+    ui('✅ Auto-Track ON', 'green', 'Fill in To + Subject, then send.\nPixel will be injected automatically.');
+    startSendWatcher();
   } else {
     card.className = 'auto-card';
     sub.textContent = 'Off — track manually below';
     ui('Auto-Track OFF', '', 'Click "Track This Email" before sending to track manually.');
+    stopSendWatcher();
   }
 }
 
@@ -177,21 +178,59 @@ function onAutoToggleChange() {
 })();
 
 function ready() {
-  ui('Ready. Toggle Auto-Track ON, or click "Track This Email".', '');
   document.getElementById('btnTrack').disabled  = false;
   document.getElementById('btnRemove').disabled = false;
   document.getElementById('btnCheck').disabled  = false;
-  // If auto-track was on in a previous session, restore toggle state
+
+  // Restore toggle state from last session
   try {
     if (sessionStorage.getItem('et_auto') === '1') {
       document.getElementById('autoToggle').checked = true;
       autoTrack = true;
       document.getElementById('autoCard').className = 'auto-card on';
       document.getElementById('autoSub').textContent = 'On — every email tracked on send';
-      // Auto-inject pixel immediately since taskpane just opened on a compose
-      addTracking(null);
     }
   } catch(e) {}
+
+  ui('Ready. ' + (autoTrack ? 'Auto-Track is ON — just click Send.' : 'Toggle Auto-Track ON, or click "Track This Email".'), '');
+
+  // Start watching for send if autoTrack is on
+  if (autoTrack) startSendWatcher();
+}
+
+// ── Send Watcher ──────────────────────────────────────────────────────────────
+// Outlook doesn't give us ItemSend without VersionOverrides manifest.
+// Instead: poll item.saveAsync every 2s — when item gets a itemId it means
+// Outlook is about to send. At that point inject pixel.
+// Simpler & more reliable: watch for body changes via a periodic check,
+// and inject pixel right before send using item.subject polling to detect
+// when compose is "ready" (has To + Subject filled).
+var sendWatchTimer = null;
+var sendWatchReady = false; // true when To + Subject detected
+
+function startSendWatcher() {
+  stopSendWatcher();
+  sendWatchReady = false;
+  // Poll every 3 seconds to check if compose has To + Subject filled
+  sendWatchTimer = setInterval(function() {
+    if (!autoTrack) { stopSendWatcher(); return; }
+    if (trackId) { stopSendWatcher(); return; } // already tracked
+    var item = Office.context.mailbox.item;
+    item.to.getAsync(function(tr) {
+      if (tr.status === Office.AsyncResultStatus.Succeeded && tr.value && tr.value.length > 0) {
+        if (!sendWatchReady) {
+          sendWatchReady = true;
+          // Compose is ready — inject pixel now
+          addTracking(null);
+          stopSendWatcher();
+        }
+      }
+    });
+  }, 3000);
+}
+
+function stopSendWatcher() {
+  if (sendWatchTimer) { clearInterval(sendWatchTimer); sendWatchTimer = null; }
 }
 
 function genId() {
