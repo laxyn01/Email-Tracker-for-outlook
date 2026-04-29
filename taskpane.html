@@ -181,6 +181,17 @@ function ready() {
   document.getElementById('btnTrack').disabled  = false;
   document.getElementById('btnRemove').disabled = false;
   document.getElementById('btnCheck').disabled  = false;
+  // If auto-track was on in a previous session, restore toggle state
+  try {
+    if (sessionStorage.getItem('et_auto') === '1') {
+      document.getElementById('autoToggle').checked = true;
+      autoTrack = true;
+      document.getElementById('autoCard').className = 'auto-card on';
+      document.getElementById('autoSub').textContent = 'On — every email tracked on send';
+      // Auto-inject pixel immediately since taskpane just opened on a compose
+      addTracking(null);
+    }
+  } catch(e) {}
 }
 
 function genId() {
@@ -264,16 +275,10 @@ function injectPixel(item, id, subj, to, callback) {
   });
 }
 
-// ── ItemSend handler — exposed globally for function-file.html ────────────────
-function onItemSendHandler(event) {
-  if (!autoTrack) {
-    event.completed({ allowEvent: true });
-    return;
-  }
-  addTracking(function(allow) {
-    event.completed({ allowEvent: allow });
-  });
-}
+// ── Auto-track note ───────────────────────────────────────────────────────────
+// Auto-track works by injecting the pixel as soon as toggle is turned ON.
+// When autoTrack is ON and user opens a new compose, pixel is auto-injected
+// via the watchCompose() loop below.
 
 // ── removeTracking ────────────────────────────────────────────────────────────
 function removeTracking() {
