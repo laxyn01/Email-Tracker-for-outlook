@@ -3,7 +3,7 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:type="MailApp">
   <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
-  <Version>1.0.1</Version>
+  <Version>1.0.2</Version>
   <ProviderName>My Email Tracker</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Email Tracker"/>
@@ -18,7 +18,7 @@
   </Hosts>
   <Requirements>
     <Sets>
-      <Set Name="MailBox" MinVersion="1.1"/>
+      <Set Name="MailBox" MinVersion="1.3"/>
     </Sets>
   </Requirements>
   <FormSettings>
@@ -33,4 +33,63 @@
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
   </Rule>
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+        <bt:Set Name="Mailbox" MinVersion="1.3"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <FunctionFile resid="functionFile"/>
+          <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="msgComposeGroup">
+                <Label resid="groupLabel"/>
+                <Control xsi:type="Button" id="msgComposeOpenPaneButton">
+                  <Label resid="paneButtonLabel"/>
+                  <Supertip>
+                    <Title resid="paneButtonTitle"/>
+                    <Description resid="paneButtonDesc"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"/>
+                    <bt:Image size="32" resid="icon32" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"/>
+                    <bt:Image size="80" resid="icon80" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpaneUrl"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+          <ExtensionPoint xsi:type="Events">
+            <Event Type="ItemSend" FunctionExecution="synchronous" FunctionName="onItemSend"/>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+        <bt:Image id="icon16" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/icon16.png"/>
+        <bt:Image id="icon32" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/icon32.png"/>
+        <bt:Image id="icon80" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/icon80.png"/>
+      </bt:Images>
+      <bt:Urls xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+        <bt:Url id="functionFile" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/function-file.html"/>
+        <bt:Url id="taskpaneUrl" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+        <bt:String id="groupLabel" DefaultValue="Email Tracker"/>
+        <bt:String id="paneButtonLabel" DefaultValue="Track Email"/>
+        <bt:String id="paneButtonTitle" DefaultValue="Email Tracker"/>
+        <bt:String id="paneButtonDesc" DefaultValue="Track when your emails are opened"/>
+      </bt:ShortStrings>
+      <bt:LongStrings xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+        <bt:String id="paneButtonDesc" DefaultValue="Track when your emails are opened"/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
 </OfficeApp>
