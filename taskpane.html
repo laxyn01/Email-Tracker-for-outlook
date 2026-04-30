@@ -178,6 +178,11 @@ function onAutoToggleChange() {
 })();
 
 function ready() {
+  // Reset state fresh for every new compose window
+  trackId = null;
+  sendWatchReady = false;
+  stopSendWatcher();
+
   document.getElementById('btnTrack').disabled  = false;
   document.getElementById('btnRemove').disabled = false;
   document.getElementById('btnCheck').disabled  = false;
@@ -189,13 +194,14 @@ function ready() {
       autoTrack = true;
       document.getElementById('autoCard').className = 'auto-card on';
       document.getElementById('autoSub').textContent = 'On — every email tracked on send';
+      ui('✅ Auto-Track ON', 'green', 'Fill To + Subject — tracking will inject automatically.');
+      startSendWatcher();
+      return;
     }
   } catch(e) {}
 
-  ui('Ready. ' + (autoTrack ? 'Auto-Track is ON — just click Send.' : 'Toggle Auto-Track ON, or click "Track This Email".'), '');
-
-  // Start watching for send if autoTrack is on
-  if (autoTrack) startSendWatcher();
+  autoTrack = false;
+  ui('Ready. Toggle Auto-Track ON, or click "Track This Email".', '');
 }
 
 // ── Send Watcher ──────────────────────────────────────────────────────────────
@@ -211,20 +217,26 @@ var sendWatchReady = false; // true when To + Subject detected
 function startSendWatcher() {
   stopSendWatcher();
   sendWatchReady = false;
-  // Poll every 3 seconds to check if compose has To + Subject filled
+  // Poll every 3 seconds — wait for BOTH To AND Subject to be filled
   sendWatchTimer = setInterval(function() {
     if (!autoTrack) { stopSendWatcher(); return; }
     if (trackId) { stopSendWatcher(); return; } // already tracked
     var item = Office.context.mailbox.item;
+    // Check To first
     item.to.getAsync(function(tr) {
-      if (tr.status === Office.AsyncResultStatus.Succeeded && tr.value && tr.value.length > 0) {
-        if (!sendWatchReady) {
+      var hasTo = tr.status === Office.AsyncResultStatus.Succeeded && tr.value && tr.value.length > 0;
+      if (!hasTo) return; // To not filled yet, wait
+      // Check Subject
+      item.subject.getAsync(function(sr) {
+        var subj = (sr.status === Office.AsyncResultStatus.Succeeded && sr.value) ? sr.value.trim() : '';
+        if (!subj) return; // Subject not filled yet, wait
+        // Both To + Subject filled — inject pixel now
+        if (!sendWatchReady && !trackId) {
           sendWatchReady = true;
-          // Compose is ready — inject pixel now
-          addTracking(null);
           stopSendWatcher();
+          addTracking(null);
         }
-      }
+      });
     });
   }, 3000);
 }
