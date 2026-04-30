@@ -4,7 +4,7 @@
   xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
   xsi:type="MailApp">
   <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
-  <Version>1.0.6</Version>
+  <Version>1.0.7</Version>
   <ProviderName>My Email Tracker</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Email Tracker"/>
@@ -34,6 +34,8 @@
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
   </Rule>
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <!-- VersionOverrides V1_0 — required wrapper, no SupportsPinning here -->
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements>
       <bt:Sets>
@@ -61,7 +63,6 @@
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <SourceLocation resid="Taskpane.Url"/>
-                    <SupportsPinning>true</SupportsPinning>
                   </Action>
                 </Control>
               </Group>
@@ -88,5 +89,66 @@
         <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Track when your emails are opened"/>
       </bt:LongStrings>
     </Resources>
+
+    <!-- VersionOverrides V1_1 — NESTED inside V1_0, SupportsPinning goes here -->
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets>
+          <bt:Set Name="Mailbox" MinVersion="1.5"/>
+        </bt:Sets>
+      </Requirements>
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <FunctionFile resid="Taskpane.Url"/>
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgComposeGroup">
+                  <Label resid="GroupLabel"/>
+                  <Control xsi:type="Button" id="TaskpaneButton">
+                    <Label resid="TaskpaneButton.Label"/>
+                    <Supertip>
+                      <Title resid="TaskpaneButton.Label"/>
+                      <Description resid="TaskpaneButton.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16x16" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/icon16.png"/>
+          <bt:Image id="Icon.32x32" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/icon32.png"/>
+          <bt:Image id="Icon.80x80" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/icon80.png"/>
+        </bt:Images>
+        <bt:Urls>
+          <bt:Url id="Taskpane.Url" DefaultValue="https://laxyn01.github.io/Email-Tracker-for-outlook/taskpane.html"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="GroupLabel" DefaultValue="Email Tracker"/>
+          <bt:String id="TaskpaneButton.Label" DefaultValue="Track Email"/>
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Track when your emails are opened"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Track when your emails are opened"/>
+        </bt:LongStrings>
+      </Resources>
+    </VersionOverrides>
+    <!-- End V1_1 -->
+
   </VersionOverrides>
+  <!-- End V1_0 -->
+
 </OfficeApp>
